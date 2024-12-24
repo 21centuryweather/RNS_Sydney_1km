@@ -10,8 +10,9 @@ Various ACCESS RNS runs to 1km resolution
 | 3  | BARRA_CCI_WC_SY_5         | 5 km       | 320x400 | 1/1/2017 | 31/1/2017 | L70_80km | BARRA-R2 | RAL3.2  | CCI+WC     | 5km WorldCover                               | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI_WC/SY_5/RAL3P2/um         |
 | 4  | BARRA_CCI_SY_1            | 1 km       | 360x450 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI        | 1km                                          | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI/SY_1/RAL3P2/um            |
 | 5  | BARRA_CCI_WC_SY_1         | 1 km       | 360x450 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI+WC     | 1km WorldCover                               | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI_WC/SY_1/RAL3P2/um         |
-| 6  | BARRA_CCI_WC_SY_1_alb_anc | 1 km       | 360x450 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI+WC     | 1km WorldCover with alb_anc option turned on | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI_WC/SY_1_alb_anc/RAL3P2/um |
-| 7  | BARRA_CCI_WC_SY_1_L       | 1 km large | 720x960 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI        | 1km large domain                             | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI/SY_1_L/RAL3P2/um          |
+| ~~6~~  | ~~BARRA_CCI_WC_SY_1_alb_anc~~ | 1 km       | 360x450 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI+WC     | 1km WorldCover with alb_anc option turned on **ERROR: did not run** | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI_WC/SY_1_alb_anc/RAL3P2/um |
+| 7  | BARRA_CCI_SY_1_L       | 1 km large | 720x960 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI        | 1km large domain                             | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI/SY_1_L/RAL3P2/um          |
+| 8  | BARRA_CCI_WC_SY_1_L       | 1 km large | 720x960 | 1/1/2017 | 31/1/2017 | L90_40km | BARRA-R2 | RAL3.2  | CCI+WC        | 1km large domain with WorldCover       | /scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle/20170101T0000Z/BARRA_CCI_WC/SY_1_L/RAL3P2/um          |
 
 ## Domain and ancillaries
 Current domain is:
