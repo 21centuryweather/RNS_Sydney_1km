@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -8,6 +9,22 @@ from matplotlib.colorbar import ColorbarBase
 import matplotlib.patheffects as path_effects
 import cartopy.crs as ccrs
 import cartopy.geodesic as cgeo
+
+def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
+                      cbar_loc='right',slabels=False,
+                      fill_obs=False,distance=100,fill_size=15,ncols=2,fill_diff=False,
+                      show_mean=False,suffix=''):
+
+    for i,time in enumerate(ds.time.values):
+        print(f'{i+1} of {len(ds.time)}')
+        dss = ds.isel(time=i)
+        fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
+                                 slabels,fill_obs,distance,fill_size,ncols,fill_diff,
+                                 show_mean,suffix)
+        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
+        plt.close('all')
+
+    return
 
 def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels=False,
                  fill_obs=False, distance=100, fill_size=15, ncols=2, fill_diff=False,
@@ -20,7 +37,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
         print(f'calculating mean between {stime} and {etime}')
         dss = dss.mean(dim='time')
         time = f'{stime} - {etime}'
-        timestamp = f'{stime}_{etime}'
+        timestamp = f'{stime} to {etime}'
     else:
         time = dss.time.values
         stime, etime = time, time
@@ -111,6 +128,98 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
 
     return fig,fname
 
+def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
+                            cbar_loc='right',cbar_levels=21,slabels=False,fill_obs=False,
+                            distance=100,vmin=None,vmax=None,fill_size=15,cmap='seismic',suffix=''):
+    import datetime
+    if dss.time.size > 1:
+        print('excluding missing periods')
+        dss = dss.dropna(dim='time')
+        print('determining time mean')
+        dss_mean = dss[[exp1,exp2]].mean(dim='time')
+        da = dss_mean[exp2] - dss_mean[exp1]
+        time_start = dss.time.values[0]
+        time_end = dss.time.values[-1]
+        timestamp = "%s - %s" %(
+            pd.to_datetime(time_start).strftime('%Y-%m-%d'),
+            pd.to_datetime(time_end).strftime('%Y-%m-%d'))
+        fname_timestamp =  timestamp.replace(' - ','_')
+
+    elif dss.time.size == 1:
+        da = dss[exp2] - dss[exp1]    
+        time = dss.time.values
+        if isinstance(time,np.ndarray):
+            time = time.item()
+        if isinstance(time,datetime.time):
+            timestamp = time.strftime('%H:%M')
+        else:
+            timestamp  = pd.to_datetime(time).strftime('%Y-%m-%d %H:%M')
+        fname_timestamp = timestamp.replace(' ','_').replace(':','')
+
+    # set plot options
+    if vmin is None or vmax is None:
+        vmin = float(da.quantile(0.001))
+        vmax = float(da.quantile(0.999))
+        vmin = min(vmin,-vmax)
+        vmax = max(-vmin,vmax)
+
+    tz = '[UTC]'
+    cbar_title = f"{opts['plot_title'].capitalize()} difference [{opts['units']}]"
+    plot_title = f"{opts['plot_title'].capitalize()} [{opts['units']}]\n{exp2} minus {exp1}: {timestamp} {tz}"
+    cmap       = opts['cmap']
+
+    proj = ccrs.PlateCarree()
+
+    #############################################
+
+    print(f"plotting {opts['variable']} {timestamp}")
+    plt.close('all')
+    fig,ax = plt.subplots(nrows=1,ncols=1,figsize=(5.5,5),
+                          sharey=True,sharex=True,
+                          subplot_kw={'projection': proj})
+
+    im = da.plot(ax=ax,cmap=cmap,levels=cbar_levels,vmin=vmin,vmax=vmax,add_colorbar=False,transform=proj)
+    ax = distance_bar(ax, distance=distance)
+    ax.set_title(plot_title)
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+
+    # # for cartopy
+    ax.xaxis.set_visible(True)
+    ax.yaxis.set_visible(True)
+    ax.coastlines(color='0.75',linewidth=0.5,zorder=5)
+    left, bottom, right, top = get_bounds(dss)
+    ax.set_extent([left, right, bottom, top], crs=proj)
+
+    # station labels and values
+    if len(sids) > 0:
+        if dss.time.size == 1:
+            print('plotting observation timestep')
+            print_station_labels(ax,im,obs,sids,stations,timestamp,opts,slabels,fill_obs,fill_size)
+        elif dss.time.size > 1:
+            print('calculating mean of observations')
+            print_mean_station_labels(ax,im,da,obs,sids,stations,time_start,time_end,opts['obs_key'],slabels,fill_obs,fill_size,
+                                print_diff=False,print_val=True)
+
+    # set colorbar
+    cbar = custom_cbar(ax,im,cbar_loc)
+
+    cbar.ax.set_ylabel(cbar_title)
+    cbar.ax.tick_params(labelsize=8)
+
+    ax.set_ylabel('latitude [degrees]')
+    ax.set_xlabel('longitude [degrees]')
+
+    # title = f"{opts['plot_title'].capitalize()} [{opts['units']}] \n{timestamp} [local]"
+    # fig.suptitle(title,y=0.97)
+    # fig.tight_layout()
+    fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.90,wspace=0.05,hspace=0.15)
+
+    plot_fname = f"{opts['plot_fname']}_spatial_diff_{exp1}_{exp2}_{fname_timestamp}{suffix}"
+    fname = f'{plot_fname}.png'
+
+    return fig,fname
+
 def custom_cbar(ax,im,cbar_loc='right',ticks=None):
     """
     Create a custom colorbar
@@ -172,7 +281,6 @@ def distance_bar(ax,distance=100):
 
     return ax
 
-
 def get_bounds(ds):
     """
     Make sure that the bounds are in the correct order
@@ -207,6 +315,50 @@ def get_bounds(ds):
 
     return left, bottom, right, top
 
+def make_mp4(fnamein,fnameout,fps=9,quality=26):
+    '''
+    Uses ffmpeg to create mp4 with custom codec and options for maximum compatability across OS.
+        fnamein (string): The image files to create animation from, with glob wildcards (*).
+        fnameout (string): The output filename (excluding extension)
+        fps (float): The frames per second. Default 6.
+        quality (float): quality ranges 0 to 51, 51 being worst.
+    '''
+
+    import glob
+    import imageio.v2 as imageio
+
+    # collect animation frames
+    fnames = sorted(glob.glob(fnamein))
+    if len(fnames)==0:
+        print('no files found to process, check fnamein')
+        return
+    img_shp = imageio.imread(fnames[0]).shape
+    out_h, out_w = img_shp[0],img_shp[1]
+
+    # resize output to blocksize for maximum capatability between different OS
+    macro_block_size=16
+    if out_h % macro_block_size > 0:
+        out_h += macro_block_size - (out_h % macro_block_size)
+    if out_w % macro_block_size > 0:
+        out_w += macro_block_size - (out_w % macro_block_size)
+
+    # quality ranges 0 to 51, 51 being worst.
+    assert 0 <= quality <= 51, "quality must be between 1 and 51 inclusive"
+
+    # use ffmpeg command to create mp4
+    command = f'ffmpeg -framerate {fps} -pattern_type glob -i "{fnamein}" \
+        -vcodec libx264 -crf {quality} -s {out_w}x{out_h} -pix_fmt yuv420p -y {fnameout}.mp4'
+    os.system(command)
+
+    return f'completed, see: {fnameout}.mp4'
+
+def update_opts(opts,**kwargs):
+    '''update opts copy with kwargs: 
+    e.g. opts = update_opts(opts, plot_title='new title')'''
+    zopts = opts.copy()
+    zopts.update(kwargs)
+    return zopts
+
 def get_variable_opts(variable):
     '''standard variable options for plotting. to be updated within master script as needed'''
 
@@ -224,6 +376,7 @@ def get_variable_opts(variable):
         'cmap'      : 'viridis',
         'threshold' : None,
         'fmt'       : '{:.2f}',
+        'dtype'     : 'float32'
         }
     
     if variable == 'air_temperature':
@@ -251,6 +404,7 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 80,
             'cmap'      : 'inferno',
+            'fmt'       : '{:.1f}',
             })
         
     if variable == 'upward_air_velocity':
@@ -284,20 +438,20 @@ def get_variable_opts(variable):
     if variable == 'surface_altitude':
         opts.update({
             'constraint': 'surface_altitude',
-            'plot_title': 'surface altitude',
-            'plot_fname': 'surface_altitude',
             'units'     : 'm',
             'obs_key'   : 'None',
             'fname'     : 'umnsaa_pa000',
             'vmin'      : 0,
             'vmax'      : 2000,
             'cmap'      : 'twilight',
+            'dtype'     : 'int16',
+            'fmt'       : '{:.0f}',
             })
         
     elif variable == 'dew_point_temperature':
         opts.update({
             'constraint': 'dew_point_temperature',
-            'plot_title': 'dew_point_temperature (1.5 m)',
+            'plot_title': 'dew point_temperature (1.5 m)',
             'plot_fname': 'dew_point_temperature_1p5m',
             'units'     : '°C',
             'obs_key'   : 'Tdp',
@@ -319,7 +473,8 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 100,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.1f}',
+            'fmt'       : '{:.3f}',
+            'dtype'     : 'float32',
             })
 
     elif variable == 'specific_humidity':
@@ -353,7 +508,7 @@ def get_variable_opts(variable):
         opts.update({
             'constraint': 'surface_upward_latent_heat_flux',
             'plot_title': 'Latent heat flux',
-            'plot_fname': 'Qle',
+            'plot_fname': 'latent_heat_flux',
             'units'     : 'W/m2',
             'obs_key'   : 'Qle',
             # 'fname'     : 'umnsaa_pvera',
@@ -361,14 +516,14 @@ def get_variable_opts(variable):
             'vmin'      : -100, 
             'vmax'      : 500,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.0f}',
+            'fmt'       : '{:.1f}',
             })
         
     elif variable == 'sensible_heat_flux':
         opts.update({
             'constraint': 'surface_upward_sensible_heat_flux',
             'plot_title': 'Sensible heat flux',
-            'plot_fname': 'Qh',
+            'plot_fname': 'sensible_heat_flux',
             'units'     : 'W/m2',
             'obs_key'   : 'Qh',
             # 'fname'     : 'umnsaa_pvera',
@@ -376,7 +531,7 @@ def get_variable_opts(variable):
             'vmin'      : -100, 
             'vmax'      : 600,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.0f}',
+            'fmt'       : '{:.1f}',
             })
 
     elif variable == 'soil_moisture_l1':
@@ -391,7 +546,6 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 50,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.2f}',
             })
 
     elif variable == 'soil_moisture_l2':
@@ -406,7 +560,6 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 100,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.2f}',
             })
         
     elif variable == 'soil_moisture_l3':
@@ -421,7 +574,6 @@ def get_variable_opts(variable):
             'vmin'      : 5,
             'vmax'      : 100,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.2f}',
             })
         
     elif variable == 'soil_moisture_l4':
@@ -436,7 +588,6 @@ def get_variable_opts(variable):
             'vmin'      : 5,
             'vmax'      : 100,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.2f}',
             })
 
     elif variable == 'surface_temperature':
@@ -449,7 +600,6 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 70,
             'cmap'      : 'inferno',
-            'fmt'       : '{:.1f}',
             })
 
     elif variable == 'soil_temperature_5cm':
@@ -464,7 +614,7 @@ def get_variable_opts(variable):
             'vmin'      : 10,
             'vmax'      : 40,
             'cmap'      : 'turbo',
-            'fmt'       : '{:.1f}',
+            'fmt'       : '{:.2f}',
             })
 
     elif variable == 'toa_outgoing_longwave_flux':
@@ -491,7 +641,7 @@ def get_variable_opts(variable):
             'vmin'      : 10,
             'vmax'      : 50,
             'cmap'      : 'turbo',
-            'fmt'       : '{:.1f}',
+            'fmt'       : '{:.2f}',
             })
 
     elif variable == 'wind':
@@ -519,7 +669,7 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 0.5,
             'cmap'      : 'turbo',
-            'fmt'       : '{:.1f}',
+            'fmt'       : '{:.2f}',
             })
 
     elif variable == 'radar_reflectivity':
@@ -784,16 +934,17 @@ def get_variable_opts(variable):
             'fmt'       : '{:.0f}',
             })
 
-    elif variable == 'land_mask':
+    elif variable == 'land_sea_mask':
         opts.update({
             'constraint': 'land_binary_mask',
-            'plot_title': 'land mask',
-            'plot_fname': 'land_mask',
+            'plot_title': 'land sea mask',
+            'plot_fname': 'land_sea_mask',
             'units'     : 'm',
             'fname'     : 'umnsaa_pa000',
             'vmin'      : 0,
             'vmax'      : 1,
             'fmt'       : '{:.1f}',
+            'dtype'     : 'int16',
             })
 
     # add variable to opts
