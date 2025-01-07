@@ -36,11 +36,12 @@ cylc_id = 'rns_ostia'
 
 variables = ['air_temperature']
 variables = ['land_sea_mask']
-variables = ['latent_heat_flux','sensible_heat_flux']
-variables = ['surface_temperature']
-variables = ['air_pressure_at_sea_level','dew_point_temperature', 'surface_net_downward_longwave_flux']
+variables = ['surface_temperature','air_temperature']
 variables = ['relative_humidity']
+variables = ['latent_heat_flux','sensible_heat_flux']
 variables = ['soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
+variables = ['soil_moisture_l4']
+variables = ['surface_temperature','air_temperature','air_pressure_at_sea_level','dew_point_temperature', 'surface_net_downward_longwave_flux']
 
 ###############################################################################
 # dictionary of experiments
@@ -49,23 +50,23 @@ exps = [
         ### Parent models ###
         'E5L_11p1_CCI',
         'BR2_12p2_CCI',
-        ## ERA5-Land CCI ###
+        # ## ERA5-Land CCI ###
         'E5L_5_CCI',
         'E5L_1_CCI',
         'E5L_1_L_CCI',
-        ### ERA5-Land CCI WordCover ###
+        # ### ERA5-Land CCI WordCover ###
         'E5L_5_CCI_WC',
         'E5L_1_CCI_WC',
         'E5L_1_L_CCI_WC',
-        ### BARRA CCI ###
+        # ### BARRA CCI ###
         'BR2_5_CCI',
         'BR2_1_CCI',
         'BR2_1_L_CCI',
-        ### BARRA CCI WorldCover ###
+        # ### BARRA CCI WorldCover ###
         'BR2_5_CCI_WC',
         'BR2_1_CCI_WC',
         'BR2_1_L_CCI_WC',
-        ### BARRA IGBP ###
+        # ### BARRA IGBP ###
         'BR2_5_IGBP',
         'BR2_1_IGBP',
         'BR2_1_L_IGBP',
@@ -155,10 +156,10 @@ if __name__ == "__main__":
             local_directory = local_directory)
 
     ################## get model data ##################
-    
+
     # folder in cylc-run name
     cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
-    
+
     for variable in variables:
         print(f'processing {variable}')
 
@@ -174,8 +175,8 @@ if __name__ == "__main__":
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
                 # # make command string to set stripe for faster i/o
-                cmd = f"lfs setstripe -c 8 -S 4M {out_dir}"
-                os.system(cmd)
+                # cmd = f"lfs setstripe -c 8 -S 4M {out_dir}"
+                # os.system(cmd)
 
             da_list = []
             for i,cycle in enumerate(cycle_list):
@@ -193,7 +194,7 @@ if __name__ == "__main__":
                     f'BR2_12p2_CCI_no_urban': f'{cycle_path}/{cycle}/BARRA_CCI_no_urban/SY_12p2/GAL9/um',
                 }|{
                     f'E5L_{res}_CCI': f'{cycle_path}/{cycle}/ERA5LAND_CCI/SY_{res}/RAL3P2/um' for res in reses
-                }|{                  
+                }|{
                     f'E5L_{res}_CCI_WC': f'{cycle_path}/{cycle}/ERA5LAND_CCI_WC/SY_{res}/RAL3P2/um' for res in reses
                 }|{
                     f'BR2_{res}_CCI':  f'{cycle_path}/{cycle}/BARRA_CCI/SY_{res}/RAL3P2/um' for res in reses
@@ -210,13 +211,13 @@ if __name__ == "__main__":
                     print(f'path {exp_paths[exp]} does not exist')
                     cycle_list.remove(cycle)
                     continue
-                
+
                 # check if any of the variables files are in the directory
                 if len(glob.glob(f"{exp_paths[exp]}/{opts['fname']}*")) == 0:
                     print(f'no files in {exp_paths[exp]}')
                     cycle_list.remove(cycle)
                     continue
-                
+
                 da = get_um_data(exp,opts)
                 if da is None:
                     print(f'WARNING: no data found at {cycle}')
@@ -232,11 +233,11 @@ if __name__ == "__main__":
             ds = xr.concat(da_list, dim='time')
             # da = da.compute()
 
-            # set decimal precision to reduce filesize (default 2)
-            precision = int(opts['fmt'].split('.')[1][0])
+            # set decimal precision to reduce filesize (definded fmt precision +1)
+            precision = int(opts['fmt'].split('.')[1][0]) + 1
             ds = ds.round(precision)
 
-            # drop forecast_period and forecast_reference_time (if they exist)
+            # drop unessasary dimensions
             if 'forecast_period' in ds.coords:
                 ds = ds.drop_vars('forecast_period')
             if 'forecast_reference_time' in ds.coords:
@@ -261,5 +262,5 @@ if __name__ == "__main__":
             ds.to_netcdf(fname, unlimited_dims='time')
 
     toc = time.perf_counter() - tic
-    
+
     print(f"Timer {toc:0.4f} seconds")

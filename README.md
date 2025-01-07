@@ -93,7 +93,7 @@ Ancillaries will be created in  `$HOME/cylc-run/u-dl705/share/data/ancils/SY_CCI
 
 ## Optional ancillary pre-processing
 
-The "WorldCover urban" option has been incorporated into u-dg767 (see [Special high res urban dataset](#special-high-res-urban-dataset)).
+The "WorldCover urban" option has been incorporated into u-dg767 (see below).
 
 The "No urban" option is a custom pre-processing script included in this repository [here](ancil_code/ancil_lct_postproc_no_urban.py). It must be run while u-dg767 is held prior to the ancil_lct_postproc_c4 task. See insturctions in that file.
 
@@ -103,28 +103,27 @@ u-dl705 has been updated to allow a switch which replaces any urban tile with a 
 Either edit `rose-suite.conf` variables as follows:
 
 ```
-WC_URBAN=false
+WC_URBAN=true
 WC_URBAN_source="/g/data/ce10/users/mjl561/WorldCover_pratiman/urban_fraction_100m.tif"
 ```
 Or click in the GUI:
 
 ![WorldCover in GUI](plotting_code/figures/GUI_WC.png)
 
-Without access to ce10, you will need to download the [source data](https://doi.org/10.5281/zenodo.7298393.) and point your suite to it.
+Without access to /g/data/ce10, you will need to download the [source data](https://doi.org/10.5281/zenodo.7298393.) and point your suite to it.
 
 ## Ancillary code MOSRS repositories
 
-The ancillary generation suite for SY_1km (u-dl705) is based on the Regional Ancillary Suite (u-bu503), located at:
-https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk
+The ancillary generation suite for SY_1km (u-dl705) is based on the Regional Ancillary Suite (u-bu503), located on MOSRS [here](https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk).
 
-u-dl705 includes a new optional configuration file as at:
-https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk/opt/rose-suite-SY_1km.conf
+u-dl705 includes a new optional configuration file [here](
+https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk/opt/rose-suite-SY_1km.conf).
 
-u-dl705 also checks out a new branch of the ANTS contrib code to allow a larger spiral search radius, as documented here:
-https://forum.access-hive.org.au/t/aus2200-vegetation-fraction-ancil-creation-issues/1972/20
+u-dl705 also checks out a new branch of the ANTS contrib code to allow a larger spiral search radius, as documented on ACCESS-hive [here](
+https://forum.access-hive.org.au/t/aus2200-vegetation-fraction-ancil-creation-issues/1972/20), as well as an option to use WorldCover in urban areas.
 
-The new ANTS contrib branch is located at:
-https://code.metoffice.gov.uk/trac/ancil/log/contrib/branches/dev/mathewlipson/r14121_RAS_CONTRIB_1p0_large_spiral
+This new ANTS contrib branch is located [here](
+https://code.metoffice.gov.uk/trac/ancil/log/contrib/branches/dev/mathewlipson/r14121_RAS_CONTRIB_1p0_large_spiral).
 
 Some special ancillary options include WorldCover and CCI with urban removed. See below.
 
