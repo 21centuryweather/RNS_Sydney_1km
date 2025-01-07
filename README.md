@@ -10,11 +10,14 @@ Contents:
 - [Experiments](#experiments)
 - [Compute](#compute)
 - [Ancillaries](#ancillaries)
-    - [To create ancillaries](#to-create-ancillaries)
-    - [Optional ancillary pre-processing](#optional-ancillary-pre-processing)
+    - [RNS_SY_1km ancil suite](#rns_sy_1km-ancil-suite)
+    - [Ancil ANTS changes](#ancil-ants-changes)
     - [Optional high res urban dataset](#optional-high-res-urban-dataset)
+    - [Optional ancillary pre-processing](#optional-ancillary-pre-processing)
 - [To run Regional Nesting Suite](#to-run-regional-nesting-suite)
 - [Outputs](#outputs)
+    - [stashpack1](#stashpack1)
+    - [stashpack6](#stashpack6)
 - [Converting from UM output to NETCDF4](#converting-from-um-output-to-netcdf4)
 - [Plotting variables](#plotting-variables)
 - [Analysis](#analysis)
@@ -49,8 +52,6 @@ All experiments include 4 resolutions (total of 24 model runs):
 | 2 | 5                | 5 km            | 320x400             | L70_80km | RAL3.2    |
 | 3 | 1                | 1 km            | 360x450             | L90_40km | RAL3.2    |
 | 4 | 1_L              | 1 km large      | 720x960             | L90_40km | RAL3.2    |
-| 5 | BR2_CCI_no_urban | BARRA-R2        | CCI (urban removed) | 1/1/2017 | 28/1/2017 |
-| 6 | BR2_IGBP         | BARRA-R2        | IGBP                | 1/1/2017 | 28/1/2017 |
 
 All ERA5-Land initialised experiments use the same parent setup: 11.1 km grid with CCI land cover
 Likewise all BARRA-R2 initialised experiments use 12.2 km grid with CCI land cover
@@ -73,7 +74,14 @@ Approximate values:
 
 # Ancillaries
 
-## To create ancillaries
+## RNS_SY_1km ancil suite
+
+The ancillary generation suite for SY_1km (u-dl705) is based on the Regional Ancillary Suite (u-bu503), located on MOSRS [here](https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk).
+
+u-dl705 includes a new optional configuration file [here](
+https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk/opt/rose-suite-SY_1km.conf).
+
+To create ancillaries do:
 
 ```
 # log into MOSRS
@@ -91,11 +99,15 @@ rose suite-run -O SY_1km
 
 Ancillaries will be created in  `$HOME/cylc-run/u-dl705/share/data/ancils/SY_CCI`. Generation takes ~ 30 minutes.
 
-## Optional ancillary pre-processing
+## Ancil ANTS changes
 
-The "WorldCover urban" option has been incorporated into u-dg767 (see below).
+u-dl705 also checks out a new branch of the ANTS contrib code to allow a larger spiral search radius, as documented on ACCESS-hive [here](
+https://forum.access-hive.org.au/t/aus2200-vegetation-fraction-ancil-creation-issues/1972/20), as well as an option to use WorldCover in urban areas.
 
-The "No urban" option is a custom pre-processing script included in this repository [here](ancil_code/ancil_lct_postproc_no_urban.py). It must be run while u-dg767 is held prior to the ancil_lct_postproc_c4 task. See insturctions in that file.
+This new ANTS contrib branch is located [here](
+https://code.metoffice.gov.uk/trac/ancil/log/contrib/branches/dev/mathewlipson/r14121_RAS_CONTRIB_1p0_large_spiral).
+
+Some special ancillary options include WorldCover and CCI with urban removed. See below.
 
 ## Optional high res urban dataset
 u-dl705 has been updated to allow a switch which replaces any urban tile with a very high resolution dataset (10 m WorldCover)
@@ -112,20 +124,11 @@ Or click in the GUI:
 
 Without access to /g/data/ce10, you will need to download the [source data](https://doi.org/10.5281/zenodo.7298393.) and point your suite to it.
 
-## Ancillary code MOSRS repositories
+## Optional ancillary pre-processing
 
-The ancillary generation suite for SY_1km (u-dl705) is based on the Regional Ancillary Suite (u-bu503), located on MOSRS [here](https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk).
+The "WorldCover urban" option has been incorporated into u-dg767 (see below).
 
-u-dl705 includes a new optional configuration file [here](
-https://code.metoffice.gov.uk/trac/roses-u/browser/d/l/7/0/5/trunk/opt/rose-suite-SY_1km.conf).
-
-u-dl705 also checks out a new branch of the ANTS contrib code to allow a larger spiral search radius, as documented on ACCESS-hive [here](
-https://forum.access-hive.org.au/t/aus2200-vegetation-fraction-ancil-creation-issues/1972/20), as well as an option to use WorldCover in urban areas.
-
-This new ANTS contrib branch is located [here](
-https://code.metoffice.gov.uk/trac/ancil/log/contrib/branches/dev/mathewlipson/r14121_RAS_CONTRIB_1p0_large_spiral).
-
-Some special ancillary options include WorldCover and CCI with urban removed. See below.
+The "No urban" option is a custom pre-processing script included in this repository [here](ancil_code/ancil_lct_postproc_no_urban.py). It must be run while u-dg767 is held prior to the ancil_lct_postproc_c4 task. See insturctions in that file.
 
 # To run Regional Nesting Suite
 
@@ -152,14 +155,12 @@ Suite takes approximately 1 hr/ day.
 
 The 5 and 1 km simulutions have 94 saved outputs (see table below). Some are at mulitiple model heights, soil levels or across multiple land tiles, so total outputs are >> 100. 
 
-Outputs include an ammended VERstash: [`u-dg768/app/um/opt/rose-app-stashpack1.conf`](https://code.metoffice.gov.uk/trac/roses-u/browser/d/g/7/6/8/rns_ostia_sydney_1km/app/um/opt/rose-app-stashpack1.conf)
+## stashpack1
 
-As well as a new custom STASHpack: [`u-dg768/app/um/opt/rose-app-stashpack6.conf`)](https://code.metoffice.gov.uk/trac/roses-u/browser/d/g/7/6/8/rns_ostia_sydney_1km/app/um/opt/rose-app-stashpack6.conf)
+Outputs include an ammended VERstash: [`u-dg768/app/um/opt/rose-app-stashpack1.conf`](https://code.metoffice.gov.uk/trac/roses-u/browser/d/g/7/6/8/rns_ostia_sydney_1km/app/um/opt/rose-app-stashpack1.conf)
 
 VERstash (stashpack1) has been ammended so that 3D fields are output hourly (rather than 3 hourly),
 and all single step outputs (VTS0 and VTS1) have been removed (not necessary in free-running mode).
-
-## stashpack1:
 
 | #  | VERstash id    | STASH name                           | isec | item | stash      | tim_name | file      | type     | period | output | height    | short code |
 |----|----------------|--------------------------------------|------|------|------------|----------|-----------|----------|--------|--------|-----------|------------|
@@ -235,7 +236,9 @@ and all single step outputs (VTS0 and VTS1) have been removed (not necessary in 
 | 70 | 30406_98bb276c | TOTAL COLUMN QCF RHO GRID            | 30   | 406  | m01s30i406 | VT1HR    | VERDIAGS2 | instant. |        | hour   |           | 30406      |
 | 71 | 30461_d63f4d64 | TOTAL COLUMN Q (WATER VAPOUR PATH)   | 30   | 461  | m01s30i461 | VT1HR    | VERDIAGS2 | instant. |        | hour   |           | 30461      |
 
-## stashpack6:
+## stashpack6
+
+Outputs include a new custom STASHpack: [`u-dg768/app/um/opt/rose-app-stashpack6.conf`)](https://code.metoffice.gov.uk/trac/roses-u/browser/d/g/7/6/8/rns_ostia_sydney_1km/app/um/opt/rose-app-stashpack6.conf)
 
 | #  | VERstash id    | STASH name                                            | isec | item | stash      | type     | period | output | tim_name | file       | height   | short code |
 |----|----------------|-------------------------------------------------------|------|------|------------|----------|--------|--------|----------|------------|----------|------------|
