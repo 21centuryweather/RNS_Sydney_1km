@@ -34,14 +34,15 @@ datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
 
 cylc_id = 'rns_ostia'
 
-variables = ['air_temperature']
-variables = ['land_sea_mask']
-variables = ['surface_temperature','air_temperature']
-variables = ['relative_humidity']
-variables = ['latent_heat_flux','sensible_heat_flux']
-variables = ['soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
-variables = ['soil_moisture_l4']
-variables = ['surface_temperature','air_temperature','air_pressure_at_sea_level','dew_point_temperature', 'surface_net_downward_longwave_flux']
+variables_done = [
+    'land_sea_mask','air_temperature','surface_temperature','relative_humidity',
+    'latent_heat_flux','sensible_heat_flux','air_pressure_at_sea_level',
+    'dew_point_temperature', 'surface_net_downward_longwave_flux','wind_u','wind_v',
+    'specific_humidity','specific_humidity_lowest_atmos_level','wind_speed_of_gust',
+    'soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4',
+    ]
+
+variables = ['latent_heat_flux']
 
 ###############################################################################
 # dictionary of experiments
@@ -141,8 +142,10 @@ def filter_odd_times(da):
 
 if __name__ == "__main__":
 
-    from dask.distributed import Client
+    print('running variables:',variables)
 
+    print('load dask')
+    from dask.distributed import Client
     n_workers = int(os.environ['PBS_NCPUS'])
     worker_memory = (int(os.environ['PBS_VMEM']) / n_workers)
     local_directory = os.path.join(os.environ['PBS_JOBFS'], 'dask-worker-space')
@@ -174,9 +177,6 @@ if __name__ == "__main__":
             # make directory if it doesn't exist
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
-                # # make command string to set stripe for faster i/o
-                # cmd = f"lfs setstripe -c 8 -S 4M {out_dir}"
-                # os.system(cmd)
 
             da_list = []
             for i,cycle in enumerate(cycle_list):

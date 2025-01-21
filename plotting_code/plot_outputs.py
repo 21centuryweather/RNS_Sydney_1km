@@ -1,4 +1,4 @@
-__version__ = "2024-12-21"
+__version__ = "2025-01-21"
 __author__ = "Mathew Lipson"
 __email__ = "m.lipson@unsw.edu.au"
 
@@ -27,41 +27,47 @@ oshome=os.getenv('HOME')
 datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
 # plotpath = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
 plotpath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/figures'
+stationpath = '/g/data/ce10/Insitu-Observations/AWS/au_2019_1hr'
 
-regrid_to_template = False
+
+regrid_to_template = True
+template_exp = 'E5L_1_L_CCI'
 
 variables = ['surface_temperature','soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
 variables = ['air_temperature']
 variables = ['surface_temperature']
 
+variables = ['latent_heat_flux']
+
 exps = [
-        ### ERA5-Land CCI ###
-        'E5L_5_CCI',
+        ### Parent models ###
+        'E5L_11p1_CCI',
+        'BR2_12p2_CCI',
+        # ## ERA5-Land CCI ###
+        # 'E5L_5_CCI',
         # 'E5L_1_CCI',
         # 'E5L_1_L_CCI',
-        ### ERA5-Land CCI WordCover ###
+        # ### ERA5-Land CCI WordCover ###
         # 'E5L_5_CCI_WC',
         # 'E5L_1_CCI_WC',
         # 'E5L_1_L_CCI_WC',
-        ### BARRA CCI ###
-        'BR2_5_CCI',
+        # ### BARRA CCI ###
+        # 'BR2_5_CCI',
         # 'BR2_1_CCI',
         # 'BR2_1_L_CCI',
-        ### BARRA CCI WorldCover ###
+        # ### BARRA CCI WorldCover ###
         # 'BR2_5_CCI_WC',
         # 'BR2_1_CCI_WC',
         # 'BR2_1_L_CCI_WC',
-        ### BARRA IGBP ###
+        # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
         # 'BR2_1_L_IGBP',
-        ### BARRA CCI no urban ###
+        # ### BARRA CCI no urban ###
         # 'BR2_5_CCI_no_urban',
         # 'BR2_1_CCI_no_urban',
         # 'BR2_1_L_CCI_no_urban',
         ]
-
-template_exp = exps[0]
 
 ################## functions ##################
 
@@ -77,7 +83,7 @@ def main_plotting():
                 cmap='turbo',
             )
 
-    fig, fname = cf.plot_spatial(exps, dss, vopts, sids=[], stations=None, obs=None)
+    fig, fname = cf.plot_spatial(exps, dss, opts, sids=[], stations=None, obs=None)
     fig, fname = cf.plot_spatial_difference(exps[0],exps[2], dss, vopts, sids=[], stations=None, obs=None)
 
     fig.savefig(f'{plotpath}/{fname}', dpi=300, bbox_inches='tight')
@@ -114,6 +120,23 @@ def main_animation(suffix):
 
     return
 
+def _plot_stations(ds, obs, sids, stations, opts, suffix):
+
+    # all stations
+    fig, fname, all_stats = cf.plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, 3, suffix)
+    fig.savefig(fname, bbox_inches='tight', dpi=200)
+    # # avg stations
+    # fig,fname, _ = cf.plot_station_data_func(ds, obs, sids, exps ,stations, opts, 'mean', suffix)
+    # fig.savefig(fname,bbox_inches='tight',dpi=200)
+    # fig,fname, _ = cf.plot_station_data_avg(ds, obs, sids, exps, stations, opts, suffix)
+    # fig.savefig(fname,bbox_inches='tight',dpi=200)
+    # # bias
+    # fig,fname, _ = cf.plot_station_data_bias(ds, obs, sids, exps, stations, opts, suffix)
+    # fig.savefig(fname,bbox_inches='tight',dpi=200)
+    # save stats to csv
+    # all_stats['mean'] = all_stats.mean(axis=1)
+    # all_stats.to_csv(f"{plotpath}/{opts['case']}_{opts['constraint']}_allstats{suffix}.csv")
+
 def open_netcdf(exps,opts,variable):
     """
     Open the netcdf files for the experiments and variable
@@ -123,10 +146,13 @@ def open_netcdf(exps,opts,variable):
     variable: variable to open
     
     """
+
+    print(f'attempting to open {len(exps)} experiments:')
+    print(exps)
    
     ds = xr.Dataset()
     for i,exp in enumerate(exps):
-        fname = f'{datapath}/{exp}_{opts["plot_fname"]}.nc'
+        fname = f'{datapath}/{opts["plot_fname"]}/{exp}_{opts["plot_fname"]}.nc'
         print(f'{i+1}: checking {fname}')
         if os.path.exists(fname):
             print(f'  opening {variable} {exp}')
@@ -135,10 +161,13 @@ def open_netcdf(exps,opts,variable):
                 if regrid_to_template:
                     if i==0:
                         # set template to interpolate
-                        template_fpath = f'{datapath}/{template_exp}_{opts["plot_fname"]}.nc'
+                        template_fpath = f'{datapath}/{opts["plot_fname"]}/{template_exp}_{opts["plot_fname"]}.nc'
                         template = xr.open_dataset(template_fpath)[opts['constraint']]
-                
-                    ds[exp] = da.interp_like(template, method='nearest')
+                    if exp != template_exp:
+                        print(f'  regridding to {template_exp}')
+                        ds[exp] = da.interp_like(template, method='nearest')
+                    else:
+                        ds[exp] = da
                 else:
                     ds[exp] = da
             except Exception as e:
@@ -147,6 +176,56 @@ def open_netcdf(exps,opts,variable):
                 exps.remove(exp)
 
     return ds
+
+def trim_sids(sids):
+    
+    # remove sids outside ds extent
+    xdsmin,ydsmin,xdsmax,ydsmax =cf.get_bounds(ds)
+    sids = [sid for sid in sids if (stations.loc[sid,'lon']>xdsmin) and (stations.loc[sid,'lon']<xdsmax)
+                and (stations.loc[sid,'lat']>ydsmin) and (stations.loc[sid,'lat']<ydsmax)]
+    
+    # remove those without obs data
+    sdate,edate = pd.Timestamp(ds.time.min().values),pd.Timestamp(ds.time.max().values)
+    # remove any column that is all nan between sdate and edate
+    sids = [sid for sid in sids if not (obs.loc[sdate:edate, sid].isna().all())]
+
+    return sids
+
+def set_up_plot_attrs(exps, plotpath):
+
+    # predefine colours for experiments
+    exp_colours = {
+        'E5L_11p1_CCI'    : 'darkblue',
+        'BR2_12p2_CCI'    : 'cyan',
+        'BARRA-R2'        : 'grey',
+        'ACCESS-G'        : 'grey',
+        }
+
+    exp_plot_titles = {
+        'ACCESS-G'       : 'ACCESS-G3 Global'
+        }
+
+    # drop keys not in exps
+    exp_colours = {key: exp_colours[key] for key in exp_colours if key in exps}
+    exp_plot_titles = {key: exp_plot_titles[key] for key in exp_plot_titles if key in exps}
+    
+    # create entry in exp_plot_titles if key not in exps
+    extra_colours = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'grey','cyan'][::-1]
+    for exp in exps:
+        if exp not in exp_colours:
+            colour = extra_colours.pop()
+            while colour in list(exp_colours.values()):
+                colour = extra_colours.pop()
+            exp_colours[exp] = colour
+
+        if exp not in exp_plot_titles:
+            exp_plot_titles[exp] = exp
+    
+    cf.plotpath = plotpath
+    cf.exp_colours = exp_colours
+    cf.exp_plot_titles = exp_plot_titles
+
+    return exp_colours, exp_plot_titles
 
 if __name__ == "__main__":
 
@@ -178,5 +257,24 @@ if __name__ == "__main__":
         print(f'processing {variable}')
 
         opts = cf.get_variable_opts(variable)
-        ds = open_netcdf(exps,variable)
+        ds = open_netcdf(exps,opts,variable)
+
+        #### get observations ####
+        if variable in ['sensible_heat_flux','latent_heat_flux','soil_moisture_l1','soil_moisture_l2']:
+            print('getting flux obs')
+            obs,stations = cf.get_flux_obs(variable, local_time_offset=None)
+        else:
+            print('getting station obs')
+            obs,stations = cf.get_station_obs(stationpath, opts, local_time_offset=None, resample=opts['obs_period'], method='instant')
+
+        # trim obs dataframe to ds time period
+        obs = obs.loc[ds.time.min().values:ds.time.max().values]
+
+        # select all stations
+        sids, suffix = stations.index.tolist(), '_all'
+
+        # trim sids to those in ds
+        sids, suffix = trim_sids(sids), '_trimmed'
+
+        exp_colours, exp_plot_titles = set_up_plot_attrs(exps, plotpath)
 

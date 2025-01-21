@@ -9,6 +9,7 @@ from matplotlib.colorbar import ColorbarBase
 import matplotlib.patheffects as path_effects
 import cartopy.crs as ccrs
 import cartopy.geodesic as cgeo
+import glob
 
 def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
                       cbar_loc='right',slabels=False,
@@ -359,6 +360,692 @@ def update_opts(opts,**kwargs):
     zopts.update(kwargs)
     return zopts
 
+###### timeseries plots ######
+
+def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, suffix=''):
+
+    '''
+    plot all station timeseries for a list of stations
+    Args:
+        ds (xr.Dataset): model data
+        obs (dict): observations
+        sids (list): station ids
+        exps (list): experiments
+        stations (pd.DataFrame): station metadata
+        opts (dict): variable options
+        ncols (int): number of columns for the plot
+        suffix (str): suffix to add to the plot filename
+    Returns:
+        fig (plt.figure): figure object
+        fname (str): filename of the plot
+    '''
+
+    plt.close('all')
+    ncols = min(len(sids),ncols)   # min three columns
+    nrows = ( len(sids) % ncols + len(sids) + 1) // ncols 
+    fig,axes = plt.subplots(nrows=nrows,ncols=ncols,figsize=(ncols*5,nrows*3),sharey=True)
+   
+    all_stats = calc_all_stats(ds, obs, sids, exps, stations, opts)
+
+    # long simulation
+    if len(ds.time) > 100:
+        marker = ''
+    else: 
+        marker = 'o'
+
+    for sid,ax in zip(sids,axes.flatten()):
+        station = stations.loc[sid,'name'].strip()
+        lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+
+        print(f'plotting {station} {opts["variable"]}')
+        o = obs[sid]
+
+        for exp in exps:
+
+            s = ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series()
+            s.plot(ax=ax, label=exp, color=exp_colours[exp], alpha=0.8, marker=marker, ms=3)
+
+        ####################################
+        ### STATS ON PLOT 
+        try:
+            stats = all_stats[[sid]].T.stack().loc[sid].T
+            df = stats.map(lambda x: opts['fmt'].format(x)).rename(columns={
+                    'MAE': f"MAE [{opts['units']}]",
+                    'MBE': f"MBE [{opts['units']}]",
+                    'threshold': f"<±{opts['threshold']} {opts['units']} [%]",
+                    })
+            yloc=0.99
+            # exp names on plot
+            result_str = '\n'.join(df.index.to_list())
+            ax.text(0.01,yloc, '\n'+result_str, fontsize=7, ha='left', va='top', transform=ax.transAxes)
+            # MAE stats on plot
+            result_str = df.iloc[:,0].to_frame().to_string(index=False,header=True, justify='right')
+            ax.text(0.22,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+            # MBE stats on plot
+            result_str = df.iloc[:,1].to_frame().to_string(index=False,header=True, justify='right')
+            ax.text(0.33,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+            # threshold stats on plot
+            if opts['threshold'] is not None:
+                result_str = df.iloc[:,-1].to_frame().to_string(index=False,header=True, justify='right')
+                ax.text(0.47,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+        except Exception:
+            pass
+        ####################################
+
+        if o.count()==0:
+            print('no observations')
+        else:
+            o.plot(ax=ax, color='k', marker='o', ms=2, label='AWS observations')
+
+        ax.set_xlim([s.index[0],s.index[-1]])
+        ax.set_ylim((opts['vmin'],opts['vmax']))
+
+        ax.set_title(station)
+
+        ax.set_xlabel('')
+        ax.grid(color='0.75',linewidth=0.5,which='both')
+
+        ax.tick_params(axis='x',labelsize=8, which='both')
+
+
+    handles, labels = ax.get_legend_handles_labels()
+    leg = dict(zip(labels, handles))
+    fig.legend(leg.values(),leg.keys(),loc='lower center',bbox_to_anchor=(0.5, -0.03),
+               fontsize=10,ncol=len(exps)+1,framealpha=1)
+
+    ####################################
+    ### MEAN STATS ON PLOT 
+    ax = axes.flatten()[-1]
+    df = all_stats.mean(axis=1).unstack().map(lambda x: opts['fmt'].format(x)).rename(columns={
+            'MAE': f"MAE [{opts['units']}]",
+            'MBE': f"MBE [{opts['units']}]",
+            'threshold': f"<±{opts['threshold']} {opts['units']} [%]",
+            })
+    yloc=-0.26
+    xloc=0.50
+    # exp names on plot
+    result_str = '\n'.join(df.index.to_list())
+    fig.text(0.01+xloc,yloc, '\n'+result_str, fontsize=7, ha='left', va='top', transform=ax.transAxes)
+    # MAE stats on plot
+    result_str = df.iloc[:,0].to_frame().to_string(index=False,header=True, justify='right')
+    fig.text(0.22+xloc,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # MBE stats on plot
+    result_str = df.iloc[:,1].to_frame().to_string(index=False,header=True, justify='right')
+    fig.text(0.33+xloc,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # threshold stats on plot
+    if opts['threshold'] is not None:
+        result_str = df.iloc[:,-1].to_frame().to_string(index=False,header=True, justify='right')
+        fig.text(0.47+xloc,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+
+    ####################################
+
+    title = f"{opts['plot_title'].capitalize()} [{opts['units']}]"
+    fig.suptitle(title,y=0.99,fontsize=14)
+
+    fig.tight_layout(w_pad=0.05)
+
+    print('mean stats')
+    print(df)
+
+    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs_{len(sids)}_sites{suffix}.png"
+
+    return fig,fname,all_stats
+
+def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suffix=''):
+    '''
+    plot station data for a list of stations
+    Args:
+        ds (xr.Dataset): model data
+        obs (dict): observations
+        sids (list): station ids
+        exps (list): experiments
+        stations (pd.DataFrame): station metadata
+        opts (dict): variable options
+        func (str): function to apply to the data (mean, median, max, min)
+        suffix (str): suffix to add to the plot filename
+    Returns:
+        fig (plt.figure): figure object
+        fname (str): filename of the plot
+    '''
+
+    if len(sids)==0:
+        print('no sids passed, exiting')
+
+    o = pd.DataFrame()
+    s = {exp:pd.DataFrame() for exp in exps}
+
+    lw, whichgrid, figwidth, yoff = 1, 'both', 7, 0.10
+    if isinstance(ds.time.min().values,np.datetime64):
+        sdate,edate = pd.Timestamp(ds.time.min().values), pd.Timestamp(ds.time.max().values)
+        if (edate - sdate).days > 30.: 
+            lw, whichgrid, figwidth, yoff = 0.5, 'major', 18, 0.06
+    else:
+        sdate,edate = ds.time.min().values.item(), ds.time.max().values.item()
+
+    for sid in sids:
+        station = stations.loc[sid,'name'].strip()
+        print(f'gathering {station} data')
+        o[station] = obs.loc[sdate:edate,sid]
+        lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+
+        for exp in exps:
+            s[exp][station] = ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series()
+
+    #########################
+
+    o = o.aggregate(func=func,axis=1)
+    stats = pd.DataFrame()
+    for exp in exps:  
+        s[exp] = s[exp].aggregate(func=func,axis=1)
+
+        mae = calc_MAE(s[exp],o)
+        mbe = calc_MBE(s[exp],o)
+        r = calc_R(s[exp],o)
+        stats[exp] = pd.Series([mae,mbe,r],index=['MAE','MBE','R'])
+        if opts['threshold'] is not None:
+            within_threshold,_ = calc_percent_within_threshold(s[exp],o,threshold=2)
+            stats.loc['threshold',exp] = within_threshold
+
+    #########################
+
+    plt.close('all')
+    fig,ax = plt.subplots(nrows=1,ncols=1,figsize=(figwidth,4))
+
+    # metric_str = all_stats.unstack()[sids][metrics] # .to_string(float_format='%.2f',col_space=20,justify='right')
+
+    o.plot(ax=ax, color='k', lw=lw, label=f'AWS observations ({func} avg)', zorder=10)
+
+    for exp in exps:
+        s[exp].plot(ax=ax,label=exp_plot_titles[exp], 
+            color=exp_colours[exp], alpha=0.75 ,marker='o', ms=1, lw=0.5,
+            ls='dotted' if 'sm' in exp else 'solid')
+
+    ax.set_xlim([s[exp].index[0],s[exp].index[-1]])
+
+    ymin,ymax = ax.get_ylim()
+    rng = (ymax - ymin)*0.10
+    ax.set_ylim((ymin,ymax+rng))
+
+    # if opts['constraint'] == 'air_temperature':
+    #     ax.set_ylim((opts['vmin']-5,opts['vmax']+5))
+    # else:
+    #     ax.set_ylim((opts['vmin'],opts['vmax']))
+
+    ax.set_xlabel('')
+    ax.grid(color='0.5',linewidth=0.5,which=whichgrid,axis='both')
+
+    ax.tick_params(axis='x',labelsize=10, which='both')
+    ax.set_ylabel(f"{opts['variable']} [{opts['units']}]")
+
+    handles, labels = ax.get_legend_handles_labels()
+    leg = dict(zip(labels, handles))
+
+    # loc = 'lower left' if constraint in ['soil_temperature','specific_humidity','relative_humidity'] else 'upper left'
+    # ax.legend(leg.values(),leg.keys(),loc=loc,fontsize=8,framealpha=1)
+
+    fig.legend(leg.values(),leg.keys(),loc='lower center',bbox_to_anchor=(0.5, -0.03),
+            fontsize=8,ncol=len(exps)+1,framealpha=1)
+
+    if len(sids)==1:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {stations.loc[sid]['name']}"
+        fname_suffix = f'_{sid}'
+    else:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {len(sids)} station {func}"
+        fname_suffix = f'{suffix}_{len(sids)}_{func}'
+    ax.set_title(title_str)
+
+    ##### MEAN STATS ON PLOT
+    df = stats.T.map(lambda x: opts['fmt'].format(x)).rename(columns={
+        'MAE': f"MAE [{opts['units']}]",
+        'MBE': f"MBE [{opts['units']}]",
+        'threshold': f"<±{opts['threshold']} {opts['units']} [%]",
+        })
+
+    yloc=0.99
+    # exp names on plot
+    result_str = '\n'.join(df.index.to_list())
+    ax.text(0.01,yloc, '\n'+result_str, fontsize=7, ha='left', va='top', transform=ax.transAxes)
+    # MAE stats on plot
+    result_str = df.iloc[:,0].to_frame().to_string(index=False,header=True, justify='right')
+    ax.text(0.01+yoff*2,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # MBE stats on plot
+    result_str = df.iloc[:,1].to_frame().to_string(index=False,header=True, justify='right')
+    ax.text(0.01+yoff*3,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # threshold stats on plot
+    if opts['threshold'] is not None:
+        result_str = df.iloc[:,-1].to_frame().to_string(index=False,header=True, justify='right')
+        ax.text(0.01+yoff*4,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+
+    print(f'{func} stats')
+    print(df)
+
+    #########################
+
+    fig.tight_layout()
+
+    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs{fname_suffix}.png"
+    
+    return fig,fname,stats
+
+def calc_all_stats(ds, obs, sids, exps, stations, opts):
+
+    all_stats = pd.DataFrame()
+
+    for sid in sids:
+        stats = pd.DataFrame()
+
+        station = stations.loc[sid,'name'].strip()
+        lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+        
+        o = obs[sid]
+
+        for exp in exps:
+            s = ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series()
+            stats[exp] = pd.Series([
+                calc_MAE(s,o), 
+                calc_MBE(s,o),
+                calc_RMSE(s,o),
+                calc_R(s,o)
+                ], index=['MAE','MBE','RMSE','R'])
+            if opts['threshold'] is not None:
+                within_threshold,sim_within = calc_percent_within_threshold(s,o,opts['threshold'])
+                stats.loc['threshold',exp] = within_threshold
+    
+        all_stats[sid] = stats.unstack()
+
+    return all_stats
+
+###### obsevations ######
+
+def get_flux_obs(variable, local_time_offset=None):
+    '''
+    Contact: Siyuan Tian siyuan.tian@bom.gov.au
+    OzFlux data from: https://dap.ozflux.org.au/thredds/dodsC/ozflux/sites/
+    Hourly averaged sensible and latent heat flux observations converted to UTC
+    Arguments:
+        variable (str): e.g. 'sensible_heat_flux' or 'latent_heat_flux'
+    '''
+
+    import re
+
+    stationpaths = {
+        'sensible_heat_flux':'/g/data/ce10/Insitu-Observations/OzFlux/Fluxes/Hourly_Fh_UTC',
+        'latent_heat_flux':'/g/data/ce10/Insitu-Observations/OzFlux/Fluxes/Hourly_Fe_UTC',
+        'soil_moisture_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_SurfaceSM_UTC',
+        'soil_moisture_l2': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_SurfaceSM_UTC',
+        # 'soil_moisutre_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_RootzoneSM_UTC',
+        # 'soil_moisture_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/30min_SM_UTC',
+        }
+
+    stations = pd.read_csv(f'/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/OzFlux_sites_info_processed.csv')
+    stations = stations.rename(columns={'sitename':'sid'})
+    
+    # create new column "name" which converts camel case to space separated
+    stations['name'] = stations['sid'].apply(lambda x: re.sub('([a-z0-9])([A-Z])', r'\1 \2', x).title())
+    stations.set_index('sid', inplace=True)
+
+    obs_list = []
+    for station in stations.index.to_list():
+        print(f'loading {variable}: {station}')
+        try:
+            # get fname
+            fname = glob.glob(f'{stationpaths[variable]}/{station}_*')[0]
+            # load csv and rename column to variable
+            tmp = pd.read_csv(fname,usecols=[0,1],names=['time',station],skiprows=1,index_col=0,parse_dates=True)
+            tmp.index = pd.to_datetime(tmp.index, format='%Y-%m-%d %H:%M:%S+00:00')
+            # set index as UTC and localize
+            tmp.index = tmp.index.tz_convert('UTC').tz_localize(None)
+            if local_time_offset:
+                tmp.index = offset_time_index(tmp.index, local_time_offset)
+            obs_list.append(tmp)
+
+        except Exception as e:
+            print(f"problem loading {variable} at {station}:")
+            print(e)
+            obs_list.append(pd.DataFrame([np.nan], columns=[station], index=[pd.Timestamp(2010,1,1)]))
+    
+    obs = pd.concat(obs_list, axis=1)
+
+    return obs, stations
+
+def get_station_obs(stationpath,opts,local_time_offset=None,resample='1H',method='instant'):
+
+    obs_key = opts['obs_key']
+
+    fname = glob.glob(f'{stationpath}/*StnDet*')[0]
+    stations = pd.read_csv(fname,header=None,index_col=0,usecols=[1,3,6,7],names=['sid','name','lat','lon'])
+
+    obs = {}
+
+    if obs_key not in [None,'None','Qh','Qle']:
+
+        print(f'getting {obs_key} observations')
+
+        obs_names = ['year', 'month', 'day', 'hour', 'minute']
+        ymdhm = [' Year Month Day Hour Minutes in YYYY.1','MM.1','DD.1','HH24.1','MI format in Universal coordinated time']
+
+        # for special mapping
+        if 'Qair' == obs_key:
+            obs_names = obs_names+['Tair','e','PSurf']
+            obs_cols = ymdhm+['Air Temperature in degrees Celsius','Vapour pressure in hPa','Station level pressure in hPa']
+        elif 'Tsoil' == obs_key:
+            obs_names = obs_names+['Tsoil05','Tsoil10','Tsoil20','Tsoil50','Tsoil100']
+            obs_cols = ymdhm+['Temperature of soil at 5cm depth in degrees Celsius','Temperature of soil at 10cm depth in degrees Celsius','Temperature of soil at 20cm depth in degrees Celsius','Temperature of soil at 50cm depth in degrees Celsius','Temperature of soil at 100cm depth in degrees Celsius']
+        else:
+            obs_names = obs_names+[obs_key]
+            obs_cols = ymdhm+[get_tidy_aws_map(reversed=True)[obs_key]]
+
+        for sid in stations.index:
+            fname = glob.glob(f'{stationpath}/*{sid}*')[0]
+
+            try:
+                tmp = pd.read_csv(fname,usecols=obs_cols, na_values='', low_memory=False)
+            except Exception as e:
+                print(f"no data found for {obs_key} at {sid}: {stations.loc[sid]['name'].strip()}")
+                tmp = pd.DataFrame(columns=obs_names)
+
+            if obs_key == 'all':
+                tmp_all = pd.read_csv(fname,na_values='', low_memory=False).iloc[:,15:]
+                tmp = pd.concat([tmp,tmp_all],axis=1)
+
+            col_map = get_tidy_aws_map()
+
+            tmp.columns = tmp.columns.str.strip()
+            tmp = tmp.rename(columns=col_map)
+
+            # set datetime, replace missing with nan and convert to float
+            tmp.index = pd.to_datetime(tmp[['year','month','day','hour','minute']]).values
+            tmp = tmp.drop(columns=['year','month','day','hour','minute'])
+            tmp = tmp.replace(r'^\s*$', np.nan, regex=True).astype('float')
+
+            for key in ['PSurf','e','e_sat','SLP']: # hPa -> Pa
+                if key in tmp.columns:
+                    tmp[key] = tmp[key]*100
+
+            for key in ['visibility']: # km -> m
+                if key in tmp.columns:
+                    tmp[key] = tmp[key]*1000
+
+            # for key in ['precip_hour']: # mm/h -> mm/s
+            #     if key in tmp.columns:
+            #         tmp[key] = tmp[key]/3600
+
+            if method=='instant':
+                # resample to INSTANTANEOUS (per model output)
+                tmp = tmp.resample(resample).asfreq()
+            if method=='mean':
+                # resample to MEAN (per model output)
+                tmp = tmp.resample(resample,closed='right',label='right').mean()
+
+            if obs_key == 'None':
+                tmp['None'] = np.nan
+
+            if local_time:
+                tmp.index = tmp.index + pd.to_timedelta(local_time_offset,'h')
+
+            obs[sid] = tmp
+
+        if obs_key == 'Qair':
+            # calculate Qair
+            for sid in stations.index:
+                obs[sid]['Qair'] =  convert_vapour_pressure_to_qair(obs[sid]['e'], obs[sid]['Tair']+273.15, obs[sid]['PSurf'])
+                obs[sid] = obs[sid][['Qair']]
+
+    else:
+        for sid in stations.index:
+            obs[sid] = pd.DataFrame(columns=[obs_key])
+
+    return obs,stations
+
+
+def get_tidy_aws_map(reversed=False):
+
+    col_map = {
+       'Latitude to four decimal places - in degrees'   : 'latitude',
+       'Longitude to four decimal places - in degrees'  : 'longitude',
+       'Year Month Day Hour Minutes in YYYY'            : 'year',
+       'MM'                                             : 'month',
+       'DD'                                             : 'day',
+       'HH24'                                           : 'hour',
+       'MI format in Local standard time'               : 'minute',
+       'Year Month Day Hour Minutes in YYYY.1'          : 'year',
+       'MM.1'                                           : 'month',
+       'DD.1'                                           : 'day',
+       'HH24.1'                                         : 'hour',
+       'MI format in Universal coordinated time'        : 'minute',
+       'Precipitation since last (AWS) observation in mm': 'precip_last_aws_obs',
+       'Total precipitation in last 60 minutes in mm where observations count >= 24': 'precip_hour',
+       'Air Temperature in degrees Celsius'                     : 'Tair',
+       'Temperature of soil at 5cm depth in degrees Celsius'    : 'Tsoil05',
+       'Temperature of soil at 10cm depth in degrees Celsius'   : 'Tsoil10',
+       'Temperature of soil at 20cm depth in degrees Celsius'   : 'Tsoil20',
+       'Temperature of soil at 50cm depth in degrees Celsius'   : 'Tsoil50',
+       'Temperature of soil at 100cm depth in degrees Celsius'  : 'Tsoil100',
+       'Wet bulb temperature in degrees Celsius'                : 'Tw',
+       'Dew point temperature in degrees Celsius'               : 'Tdp',
+       'Relative humidity in percentage %'                      : 'RH',
+       'Vapour pressure in hPa'                                 : 'e',
+       'Saturated vapour pressure in hPa'                       : 'e_sat',
+       'Wind (1 minute) speed in m/s'                           : 'wind',
+       'Average wind speed in last 10 minutes in m/s where observations count >= 4': 'Wind_10min',
+       'Highest wind speed in last 10 minutes in m/s where observations count >= 4': 'Wind_10min_max',
+       'Highest maximum 3 sec wind gust in last 10 minutes in m/s where observations count >= 4'    : 'Wind_gust',
+       'Average direction of wind in last 10 minutes in degrees true where observations count >= 4' : 'wdir',
+       'Visibility (automatic - 10 minute data mean) in km'     : 'visibility',
+       'Station level pressure in hPa': 'PSurf'
+    }
+
+    if reversed:
+        col_map = {v:k for k,v in col_map.items()}
+
+    return col_map
+
+def calc_esat(temp,pressure,mode=0):
+    '''Calculates vapor pressure at saturation
+
+    From Weedon 2010, through Buck 1981: 
+    New Equations for Computing Vapor Pressure and Enhancement Factor, Journal of Applied Meteorology
+    ----------
+    temp        [K]     2m air temperature
+    pressure    [Pa]    air pressure
+    mode        [0,1]   two different methods to calculate:
+        mode=0: from Wheedon et al. 2010
+        mode=1: from Ukkola et al., 2017
+    NOTE: mode 0 and 1 nearly identical
+          Ukkola et al uses the ws=qs approximation (which is not used here, see Weedon 2010)
+    '''
+   
+    # constants
+    Rd = 287.05  # specific gas constant for dry air
+    Rv = 461.52  #specific gas constant for water vapour
+    Epsilon = Rd/Rv  # = 0.622...
+    Beta = (1.-Epsilon) # = 0.378 ...
+
+    temp_C = temp - 273.15  # temperature conversion to [C]
+
+    if mode == 0: # complex calculation from Weedon et al. 2010
+
+        # values when over:         water,  ice
+        A = np.where( temp_C > 0., 6.1121,  6.1115 )
+        B = np.where( temp_C > 0., 18.729,  23.036 )
+        C = np.where( temp_C > 0., 257.87,  279.82 )
+        D = np.where( temp_C > 0., 227.3,   333.7 )
+        X = np.where( temp_C > 0., 0.00072, 0.00022 )
+        Y = np.where( temp_C > 0., 3.2E-6,  3.83E-6 )
+        Z = np.where( temp_C > 0., 5.9E-10, 6.4E-10 )
+
+        esat = A * np.exp( ((B - (temp_C/D) ) * temp_C)/(temp_C + C))
+
+        enhancement = 1. + X + pressure/100. * (Y + (Z*temp_C**2))
+
+        esat = esat*enhancement*100.
+
+    elif mode == 1: 
+        '''simpler calculation from Ukkola et al., 2017
+        From Jones (1992), Plants and microclimate: A quantitative approach 
+        to environmental plant physiology, p110 '''
+
+        esat = 613.75*np.exp( (17.502*temp_C)/(240.97+temp_C) )
+
+    else:
+        raise SystemExit(0)
+
+    return esat
+
+def calc_qsat(esat,pressure):
+    '''Calculates specific humidity at saturation
+
+    Parameters
+    ----------
+    esat        [Pa]    vapor pressure at saturation
+    pressure    [Pa]    air pressure
+
+    Returns
+    -------
+    qsat        [g/g] specific humidity at saturation
+
+    '''
+    # constants
+    Rd = 287.05  # specific gas constant for dry air
+    Rv = 461.52  #specific gas constant for water vapour
+    Epsilon = Rd/Rv  # = 0.622...
+    Beta = (1.-Epsilon) # = 0.378 ...
+
+    qsat = (Epsilon*esat)/(pressure - Beta*esat)
+
+    return qsat
+
+def convert_rh_to_qair(rh,temp,pressure):
+    ''' using equations from Weedon 2010 & code from Cucchi 2020 '''
+
+    assert rh.where(rh<=105).all(), 'relative humidity values > 105. check input'
+    assert rh.where(rh>0).any(), 'relative humidity values < 0. check input'
+    assert rh.max()>1.05, 'relative humidity values betwen 0-1 (should be 0-100)'
+
+    # calculate saturation vapor pressure
+    esat = calc_esat(temp,pressure)
+    # calculate saturation specific humidity
+    qsat = calc_qsat(esat,pressure)
+    # calculate specific humidity
+    qair = qsat*rh/100.
+
+    return qair
+
+def convert_vapour_pressure_to_qair(e,temp,pressure):
+    ''' using equations from Weedon 2010 & code from Cucchi 2020 '''
+
+    # calculate saturation vapor pressure
+    esat = calc_esat(temp,pressure)
+    # calculate saturation specific humidity
+    qsat = calc_qsat(esat,pressure)
+    # calculate specific humidity
+
+    rh = e/esat*100
+    qair = qsat*rh/100.
+
+    return qair
+
+def convert_dewtemp_to_qair(dewtemp,temp,pressure):
+    ''' using equations from Weedon 2010 & code from Cucchi 2020 '''
+
+    # calculate saturation vapor pressure
+    esat = calc_esat(temp,pressure)
+    # calculate saturation vapor pressure at dewpoint
+    esat_dpt = calc_esat(dewtemp,pressure)
+    # calculate saturation specific humidity
+    qsat = calc_qsat(esat,pressure)
+    # calculate specific humidity
+    qair = qsat * (esat_dpt/esat)
+
+    return qair
+
+def convert_dewtemp_to_rh(dewtemp,temp,pressure):
+    ''' using equations from Weedon 2010 & code from Cucchi 2020 '''
+
+    # calculate saturation vapor pressure
+    esat = calc_esat(temp,pressure)
+    # calculate saturation vapor pressure at dewpoint
+    esat_dpt = calc_esat(dewtemp,pressure)
+    # calculate saturation specific humidity
+    qsat = calc_qsat(esat,pressure)
+    # calculate relative humidity
+    rh = esat_dpt/esat*100
+
+    assert rh.where(rh<=105).all(), 'relative humidity values > 105. check input'
+    assert rh.where(rh>0).any(), 'relative humidity values < 0. check input'
+    assert rh.max()>1.05, 'relative humidity values betwen 0-1 (should be 0-100)'
+
+    return rh
+
+##### error metrics #####
+
+def calc_MAE(sim,obs):
+    '''Calculate Mean Absolute Error'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = abs(sim-obs).mean()
+
+    return metric
+
+def calc_nMAE(sim,obs):
+    '''Calculate Mean Absolute Error normalised by average observation'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = abs(sim-obs).mean()/obs.mean()
+
+    return metric
+
+def calc_MBE(sim,obs):
+    '''Calculate Mean Bias Error from Best et al 2015'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = np.mean(sim-obs)
+
+    return metric
+
+def calc_R(sim,obs):
+    '''cacluate normalised correlation coefficient (pearsons)'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = sim.corr(obs, method='pearson')
+
+    return metric
+
+def calc_nSD(sim,obs):
+    '''calculate normalised standard deviation'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = sim.std()/obs.std()
+
+    return metric
+
+def calc_RMSE(sim,obs):
+    '''Calculate Mean Absolute Error'''
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    metric = np.sqrt( ((sim-obs)**2).mean() )
+
+    return metric
+
+def calc_percent_within_threshold(sim,obs,threshold=2):
+
+    sim = sim.where(obs.notna()).dropna()
+    obs = obs.where(sim.notna()).dropna()
+    sim_within = sim.where( ((sim-obs)<threshold) & ((sim-obs)>-threshold) )
+
+    if sim.count() == 0:
+        metric = np.nan
+    else:
+        metric = 100*sim_within.count()/sim.count()
+
+    return metric,sim_within
+
 def get_variable_opts(variable):
     '''standard variable options for plotting. to be updated within master script as needed'''
 
@@ -394,7 +1081,7 @@ def get_variable_opts(variable):
             'fmt'       : '{:.2f}',
             })
         
-    if variable == 'Qf':
+    if variable == 'anthropogenci_heat_flux':
         opts.update({
             'constraint': 'm01s03i721',
             'plot_title': 'anthropogenic heat flux',
@@ -473,7 +1160,7 @@ def get_variable_opts(variable):
             'vmin'      : 0,
             'vmax'      : 100,
             'cmap'      : 'turbo_r',
-            'fmt'       : '{:.3f}',
+            'fmt'       : '{:.2f}',
             'dtype'     : 'float32',
             })
 
@@ -482,6 +1169,20 @@ def get_variable_opts(variable):
             'constraint': 'm01s03i237',
             'plot_title': 'specific humidity (1.5 m)',
             'plot_fname': 'specific_humidity_1p5m',
+            'units'     : 'kg/kg',
+            'obs_key'   : 'Qair',
+            'fname'     : 'umnsaa_psurfc',
+            'vmin'      : 0.004,
+            'vmax'      : 0.020,
+            'cmap'      : 'turbo_r',
+            'fmt'       : '{:.4f}',
+            })
+
+    elif variable == 'specific_humidity_lowest_atmos_level':
+        opts.update({
+            'constraint': 'm01s00i010',
+            'plot_title': 'specific humidity (lowest atmos. level)',
+            'plot_fname': 'specific_humidity_lowest_atmos_level',
             'units'     : 'kg/kg',
             'obs_key'   : 'Qair',
             'fname'     : 'umnsaa_psurfc',
@@ -644,14 +1345,42 @@ def get_variable_opts(variable):
             'fmt'       : '{:.2f}',
             })
 
-    elif variable == 'wind':
+    elif variable == 'wind_u':
         opts.update({
-            'constraint': 'wind',
-            'plot_title': 'wind speed',
-            'plot_fname': 'wind',
+            'constraint': 'm01s03i225',
+            'plot_title': '10 m wind: U-component',
+            'plot_fname': 'wind_u_10m',
             'units'     : 'm/s',
             'obs_key'   : 'wind',
             'fname'     : 'umnsaa_pvera',
+            'vmin'      : 0,
+            'vmax'      : 25,
+            'cmap'      : 'turbo',
+            'threshold' : 2.57,
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'wind_v':
+        opts.update({
+            'constraint': 'm01s03i226',
+            'plot_title': '10 m wind: V-component',
+            'plot_fname': 'wind_v_10m',
+            'units'     : 'm/s',
+            'obs_key'   : 'wind',
+            'fname'     : 'umnsaa_pvera',
+            'vmin'      : 0,
+            'vmax'      : 25,
+            'cmap'      : 'turbo',
+            'threshold' : 2.57,
+            'fmt'       : '{:.2f}',
+            })
+    
+    elif variable == 'wind_speed':
+        opts.update({
+            'plot_title': '10 m wind speed',
+            'plot_fname': 'wind_speed_10m',
+            'units'     : 'm/s',
+            'obs_key'   : 'wind',
             'vmin'      : 0,
             'vmax'      : 25,
             'cmap'      : 'turbo',
@@ -699,19 +1428,6 @@ def get_variable_opts(variable):
             'fmt'       : '{:.1f}',
             })
         
-    elif variable == 'surface_runoff_amount':
-        opts.update({
-            'constraint': 'surface_runoff_amount',
-            'plot_title': 'surface runoff amount',
-            'plot_fname': 'surface_runoff_amount',
-            'units'     : 'kg m-2',
-            'fname'     : 'umnsaa_psurfb',
-            'vmin'      : 0,
-            'vmax'      : 100,
-            'cmap'      : 'Blues',
-            'fmt'       : '{:.1f}',
-            })
-
     elif variable == 'fog_area_fraction':
         opts.update({
             'constraint': 'fog_area_fraction',
@@ -895,6 +1611,20 @@ def get_variable_opts(variable):
             'cmap'      : 'gist_earth_r',
             'fmt'       : '{:.8f}',
             })
+
+    elif variable == 'surface_runoff_amount':
+        opts.update({
+            'constraint': 'surface_runoff_amount',
+            'plot_title': 'surface runoff amount',
+            'plot_fname': 'surface_runoff_amount',
+            'units'     : 'kg m-2',
+            'fname'     : 'umnsaa_psurfb',
+            'vmin'      : 0,
+            'vmax'      : 100,
+            'cmap'      : 'Blues',
+            'fmt'       : '{:.1f}',
+            })
+    
 
     elif variable == 'subsurface_runoff_amount':
         opts.update({
