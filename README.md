@@ -1,6 +1,6 @@
 # RNS_SY_1km
 
-This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. 
+This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. This OSTIA pre-alpha release is NOT CURRENTLY SUPPORTED by NRI, as it is being developed/tested. For more information contact Chermelle Engel.
 
 Most of the codebase is stored in [MOSRS](https://code.metoffice.gov.uk).
 Plotting functions and some pre-processing stored here.
