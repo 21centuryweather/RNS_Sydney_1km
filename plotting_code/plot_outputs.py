@@ -27,22 +27,22 @@ oshome=os.getenv('HOME')
 datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
 # plotpath = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
 plotpath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/figures'
-stationpath = '/g/data/ce10/Insitu-Observations/AWS/au_2019_1hr'
+stationpath = '/g/data/gb02/mf9078/AWS_5mindata_38stations'
 
 
 regrid_to_template = True
-template_exp = 'E5L_1_L_CCI'
+template_exp = 'E5L_1_L_CCI_WC'
+template_exp = 'BR2_1_L_CCI_WC'
 
 variables = ['surface_temperature','soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
-variables = ['air_temperature']
 variables = ['surface_temperature']
-
 variables = ['latent_heat_flux']
+variables = ['air_temperature']
 
 exps = [
         ### Parent models ###
-        'E5L_11p1_CCI',
-        'BR2_12p2_CCI',
+        # 'E5L_11p1_CCI',
+        # 'BR2_12p2_CCI',
         # ## ERA5-Land CCI ###
         # 'E5L_5_CCI',
         # 'E5L_1_CCI',
@@ -58,7 +58,7 @@ exps = [
         # ### BARRA CCI WorldCover ###
         # 'BR2_5_CCI_WC',
         # 'BR2_1_CCI_WC',
-        # 'BR2_1_L_CCI_WC',
+        'BR2_1_L_CCI_WC',
         # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
@@ -77,13 +77,14 @@ def main_plotting():
     # dss = ds.sel(time=ds.time.dt.hour==3)
     dss = ds.isel(time=1)
 
-    vopts = cf.update_opts(opts,
-                vmin=15,
-                vmax=30,
-                cmap='turbo',
-            )
+    # vopts = cf.update_opts(opts,
+    #             vmin=15,
+    #             vmax=30,
+    #             cmap='turbo',
+    #         )
 
-    fig, fname = cf.plot_spatial(exps, dss, opts, sids=[], stations=None, obs=None)
+    fig, fname = cf.plot_spatial(exps, dss, opts, sids, stations, obs, slabels=False,
+                 fill_obs=True)
     fig, fname = cf.plot_spatial_difference(exps[0],exps[2], dss, vopts, sids=[], stations=None, obs=None)
 
     fig.savefig(f'{plotpath}/{fname}', dpi=300, bbox_inches='tight')
@@ -93,22 +94,21 @@ def main_plotting():
 def main_animation(suffix):
 
     vopts = cf.update_opts(opts,
-                vmin=15,
-                vmax=30,
-                cmap='turbo',
+                vmin=10,
+                vmax=45,
+                cmap='Spectral_r',
             )
 
-    # lsm_ds = open_netcdf(exps,'land_sea_mask')
+    # lsm_ds = open_output_netcdf(exps,'land_sea_mask')
     # # mask ds with lsm
     # masked = xr.Dataset()
     # for exp in exps:
     #     masked[exp] = ds[exp].where(lsm_ds[exp].isel(time=0)==0)
 
-    cf.plot_spatial_anim(exps,ds,vopts,[],stations=None,obs=None,plotpath=plotpath,distance=250, slabels=False,
-                      fill_obs=False)
+    cf.plot_spatial_anim(exps,ds,vopts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=200)
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
     fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
-    cf.make_mp4(fnamein,fnameout,fps=24,quality=26)
+    cf.make_mp4(fnamein,fnameout,fps=48,quality=26)
 
     # # make gif
     # command = f'convert -delay 5 -loop 0 {fnamein} {fnameout}.gif'
@@ -137,7 +137,7 @@ def _plot_stations(ds, obs, sids, stations, opts, suffix):
     # all_stats['mean'] = all_stats.mean(axis=1)
     # all_stats.to_csv(f"{plotpath}/{opts['case']}_{opts['constraint']}_allstats{suffix}.csv")
 
-def open_netcdf(exps,opts,variable):
+def open_output_netcdf(exps,opts,variable):
     """
     Open the netcdf files for the experiments and variable
 
@@ -195,7 +195,7 @@ def set_up_plot_attrs(exps, plotpath):
 
     # predefine colours for experiments
     exp_colours = {
-        'E5L_11p1_CCI'    : 'darkblue',
+        'E5L_11p1_CCI'    : 'gold',
         'BR2_12p2_CCI'    : 'cyan',
         'BARRA-R2'        : 'grey',
         'ACCESS-G'        : 'grey',
@@ -249,6 +249,8 @@ if __name__ == "__main__":
     cylc_id = 'rns_ostia'
     cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
+    exp_colours, exp_plot_titles = set_up_plot_attrs(exps, plotpath)
+
     # check if plotpath exists, make if necessary
     if not os.path.exists(plotpath):
         os.makedirs(plotpath)
@@ -257,18 +259,22 @@ if __name__ == "__main__":
         print(f'processing {variable}')
 
         opts = cf.get_variable_opts(variable)
-        ds = open_netcdf(exps,opts,variable)
+        ds = open_output_netcdf(exps,opts,variable)
 
         #### get observations ####
         if variable in ['sensible_heat_flux','latent_heat_flux','soil_moisture_l1','soil_moisture_l2']:
             print('getting flux obs')
-            obs,stations = cf.get_flux_obs(variable, local_time_offset=None)
+            obs, stations = cf.get_flux_obs(variable, local_time_offset=None)
         else:
             print('getting station obs')
-            obs,stations = cf.get_station_obs(stationpath, opts, local_time_offset=None, resample=opts['obs_period'], method='instant')
+            obs, stations = cf.process_station_netcdf(variable, stationpath, local_time_offset=11)
+        ###     obs, stations = cf.get_station_obs(stationpath, opts, local_time_offset=None, resample=opts['obs_period'], method='instant')
 
         # trim obs dataframe to ds time period
         obs = obs.loc[ds.time.min().values:ds.time.max().values]
+
+        # select only obs that align with ds model times
+        obs = obs.loc[ds.time.values]
 
         # select all stations
         sids, suffix = stations.index.tolist(), '_all'
@@ -276,5 +282,19 @@ if __name__ == "__main__":
         # trim sids to those in ds
         sids, suffix = trim_sids(sids), '_trimmed'
 
-        exp_colours, exp_plot_titles = set_up_plot_attrs(exps, plotpath)
+        # # special sids
+        # sids, suffix = ['066062','066137','070351'], '_special'
+
+        # # plotting
+        # vopts = cf.update_opts(opts,
+        #     vmin=10,
+        #     vmax=45,
+        #     )
+        # _plot_stations(ds, obs, sids, stations, vopts, suffix)
+
+        sids = ['067105','066212','070330','061260','066059','068239','063291','066043','061078','070351','066194','066161','061425','063303','067113']
+
+        main_animation(suffix=exps[0])
+    
+    print('done!')
 

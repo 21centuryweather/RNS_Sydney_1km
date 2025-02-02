@@ -24,10 +24,15 @@ import common_functions as cf
 importlib.reload(cf)
 
 ############## set up ##############
-
+domain_name = 'SY'
 ancil_path = '/g/data/ce10/users/mjl561/ancils/RNS_SY_1km/SY_CCI'
-domains = 'SY_11p1','SY_5','SY_1_L','SY_1'
+domains = ['SY_era5','SY_11p1','SY_5','SY_1_L','SY_1']
 plot_path = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
+
+# domain_name = 'Lismore'
+# ancil_path = '/scratch/ce10/mjl561/cylc-run/u-dg767/share/data/ancils/Lismore'
+# domains = ['era5', 'd1000', 'd0198']
+# plot_path = f'{oshome}'
 
 ############## functions ##############
 
@@ -61,7 +66,7 @@ def plot_domain_orography():
 
     print(f"plotting")
 
-    proj = ccrs.PlateCarree()
+    proj = ccrs.AlbersEqualArea()
     opts = get_variable_opts('surface_altitude')
     cmap = plt.get_cmap(opts['cmap'])
     # cmap = replace_cmap_min_with_white(cmap)
@@ -76,7 +81,7 @@ def plot_domain_orography():
         im = data[domain].plot(ax=ax,cmap=cmap, vmin=opts['vmin'],vmax=opts['vmax'],add_colorbar=False, transform=proj)
         # draw rectangle around domain
         left, bottom, right, top = cf.get_bounds(data[domain])
-        ax.plot([left, right, right, left, left], [bottom, bottom, top, top, bottom], color='0.65', linewidth=1, linestyle='dashed' if domain=='SY_1' else 'solid')
+        ax.plot([left, right, right, left, left], [bottom, bottom, top, top, bottom], color='red', linewidth=1, linestyle='dashed' if domain=='SY_1' else 'solid')
         # label domain with white border around black text
         domain_text = f'{domain}: {data[domain].shape[0]}x{data[domain].shape[1]}'
         ax.text(right-0.1, top-0.1, f'{domain_text}', fontsize=8, ha='right', va='top', color='k',
@@ -91,13 +96,14 @@ def plot_domain_orography():
     ax.xaxis.set_visible(True)
     ax.yaxis.set_visible(True)
     ax.coastlines(color='k',linewidth=0.5,zorder=5)
-    left, bottom, right, top = cf.get_bounds(data['SY_11p1'])
+    left, bottom, right, top = cf.get_bounds(data[domains[0]])
+    # left, bottom, right, top =  (139.750003, -52.05, 186.750012, -5.049998)
     ax.set_extent([left, right, bottom, top], crs=proj)
     
     ax = cf.distance_bar(ax,distance=200)
-    ax.set_title('Sydney domains')
+    ax.set_title(f'{domain} domains')
 
-    fig.savefig(f'{plot_path}/SY_domain_{opts["plot_fname"]}.png',dpi=300,bbox_inches='tight')
+    fig.savefig(f'{plot_path}/{domain}_domain_{opts["plot_fname"]}.png',dpi=300,bbox_inches='tight')
 
     return
 

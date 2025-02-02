@@ -99,16 +99,16 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
         ax.tick_params(axis='y', labelleft=subplotspec.is_first_col(), labelright=False, labelsize=8)
         ax.tick_params(axis='x', labelbottom=subplotspec.is_last_row(), labeltop=False, labelsize=8) 
 
-        # if len(sids) > 0:
-        #     # station labels and values
-        #     obs_to_pass = obs.copy()
+        if len(sids) > 0:
+            # station labels and values
+            obs_to_pass = obs.copy()
 
-        #     if fill_diff:
-        #         # select only exp within obs_to_pass dicts
-        #         for sid in sids:
-        #             lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
-        #             obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs[sid].loc[stime:etime].mean().values
-        #     print_station_labels(ax,im,obs_to_pass,sids,stations,time,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
+            if fill_diff:
+                # select only exp within obs_to_pass dicts
+                for sid in sids:
+                    lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+                    obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs[sid].loc[stime:etime].mean()
+            print_station_labels(ax,im,obs_to_pass,sids,stations,time,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
 
         # print mean spatial value on plot
         if show_mean:
@@ -220,6 +220,37 @@ def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
     fname = f'{plot_fname}.png'
 
     return fig,fname
+
+def print_station_labels(ax,im,obs_to_pass,sids,stations,timestamp,opts,
+                         slabels,fill_obs,fill_size,fill_diff=False,diff_vals=2):
+
+    for sid in sids:
+        print(sid)
+        lat,lon,name = stations.loc[sid,'lat'],stations.loc[sid,'lon'],stations.loc[sid,'name'].strip()
+        if slabels:
+            ax.annotate(text=name[:3], xycoords='data', xy=(lon,lat), xytext=(0,3),
+                textcoords='offset points', fontsize=4,color='k',ha='center', zorder=10)
+        if fill_obs:
+            try:
+                obs_val = obs_to_pass.loc[timestamp,sid]
+                if np.isnan(obs_val):
+                    ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
+                elif fill_diff:
+                    im = ax.scatter(lon,lat, c=obs_val, cmap='coolwarm', vmin=-diff_vals, vmax=diff_vals,
+                                    marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
+                    ax.annotate(text=opts['fmt'].format(obs_val), xycoords='data', xy=(lon,lat), xytext=(0,-3),
+                        textcoords='offset points', fontsize=4,color='k',ha='center',va='top',zorder=10)
+                    if ax.get_subplotspec().is_last_col():
+                        cbar = custom_cbar(ax,im,cbar_loc='far_right')  
+                        cbar.ax.set_ylabel('diff (sim - obs)')
+                        cbar.ax.tick_params(labelsize=8)
+                else:
+                    ax.scatter(lon,lat, c=obs_val, norm=im.norm, cmap=im.cmap, marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
+            except Exception as e:
+                print(f'exception plotting {sid} obs at {timestamp}: {e}')
+                ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
+        else:
+            ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
 
 def custom_cbar(ax,im,cbar_loc='right',ticks=None):
     """
@@ -383,7 +414,7 @@ def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, su
     plt.close('all')
     ncols = min(len(sids),ncols)   # min three columns
     nrows = ( len(sids) % ncols + len(sids) + 1) // ncols 
-    fig,axes = plt.subplots(nrows=nrows,ncols=ncols,figsize=(ncols*5,nrows*3),sharey=True)
+    fig,axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(1+ncols*5,1+nrows*3), sharey=True)
    
     all_stats = calc_all_stats(ds, obs, sids, exps, stations, opts)
 
@@ -656,6 +687,90 @@ def calc_all_stats(ds, obs, sids, exps, stations, opts):
     return all_stats
 
 ###### obsevations ######
+
+def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None, local_time_offset=11):
+
+    '''
+    Opens all station 5min netcdf files, collects single variable and returns xarray dataset
+    Arguments:
+        variable (str): variable to extract from netcdf files
+        stationpath (str): path to station netcdf files
+        sdate (str): start date
+        edate (str): end date
+    Returns:
+        obs (xarray dataset): xarray dataset of all stations for variable
+        stations (pandas dataframe): dataframe of station metadata
+    '''
+
+    variable_map = {
+        'air_temperature' : 'Temperature',
+        }
+
+    fname = f'{stationpath}/all_stations_{variable}_from_{sdate}.nc'
+
+    # check if file has already been processed
+    if os.path.exists(fname):
+        print(f'opening {fname}')
+        obs_ds = xr.open_dataset(fname)
+
+    else:    
+        # get list of files and variable name
+        obs_var = variable_map[variable]
+        fnames = glob.glob(f'{stationpath}/*.nc')
+
+        da_list = []
+
+        for i, fname in enumerate(fnames):
+            print(f'{i}/{len(fnames)}: {fname}')
+            station_obs = xr.open_dataset(fname)
+            # rename Time to time
+            station_obs = station_obs.rename({'Time':'time'})
+            if obs_var in station_obs.data_vars:
+                print(f'  found {variable}')
+                da = station_obs[obs_var].sel(time=slice(sdate, edate))
+                da.attrs.update(station_obs.attrs)
+                da.name = da.attrs['Station_number']
+                da_list.append(da)
+
+        print('merging station data into one dataset')
+        obs_ds = xr.merge(da_list)
+        obs_ds.attrs = {}
+
+        # set time dtype encoding to normal integer
+        obs_ds.time.encoding.update({'dtype':'int32'})
+
+        # set all data_vars to float32
+        for var in obs_ds.data_vars:
+            obs_ds[var].encoding.update({'dtype':'float32'})
+
+        # chunk for optimising timeseries
+        obs_ds = obs_ds.chunk({'time': -1})
+
+        # save to netcdf
+        obs_ds.to_netcdf(fname)
+
+    # convert to dataframe
+    obs = obs_ds.to_dataframe()
+
+    # hour offset from local to UTC
+    obs.index = obs.index + pd.DateOffset(hours=-local_time_offset)
+
+    station_data_list = []
+    for sid in obs_ds.data_vars:
+        station_data = pd.Series([
+            obs_ds[sid].attrs['Latitude'], 
+            obs_ds[sid].attrs['Longitude'],
+            obs_ds[sid].attrs['Height_of_station_above_mean_sea_level_in_metres'],
+            obs_ds[sid].attrs['Month_Year_site_opened'],
+            obs_ds[sid].attrs['Month_Year_site_closed'],
+            obs_ds[sid].attrs['Station_name'],
+            ], name=sid)
+        station_data_list.append(station_data)
+
+    stations = pd.DataFrame(station_data_list)
+    stations.columns = ['lat','lon','height','opened','closed','name']
+
+    return obs, stations
 
 def get_flux_obs(variable, local_time_offset=None):
     '''
