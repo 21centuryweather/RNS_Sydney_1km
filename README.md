@@ -268,9 +268,19 @@ Outputs include a new custom STASHpack: [`u-dg768/app/um/opt/rose-app-stashpack6
 
 # Converting from UM output to NETCDF4
 
-A [script in this repository](plotting_code/um_to_netcdf.py) converts uncompressed UM native outputs to compressed and chuncked NETCDF.
+A custom [script in this repository](plotting_code/um_to_netcdf.py) converts uncompressed UM native outputs to compressed and chuncked NETCDF.
 
 I'm currently going through the process of saving files to netcdf, which could take some time. Let me know your priority outputs. 
+
+An alternative option is to use [um2nc](https://github.com/ACCESS-NRI/um2nc-standalone), a python program managed by NRI. 
+
+It now works with RNS suite, and that should come onto the main trunk this month, but in the meantime use the prerelease as follows:
+
+```
+module use /g/data/vk83/prerelease/modules
+module load payu/dev
+um2nc input_file output_file.nc
+```
 
 # Plotting variables
 
