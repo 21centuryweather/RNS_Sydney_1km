@@ -29,10 +29,11 @@ datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
 plotpath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/figures'
 stationpath = '/g/data/gb02/mf9078/AWS_5mindata_38stations'
 
-
 regrid_to_template = True
 template_exp = 'E5L_1_L_CCI_WC'
 template_exp = 'BR2_1_L_CCI_WC'
+local_time_offset = 10
+local_time = True
 
 variables = ['surface_temperature','soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
 variables = ['surface_temperature']
@@ -46,15 +47,15 @@ exps = [
         # ## ERA5-Land CCI ###
         # 'E5L_5_CCI',
         # 'E5L_1_CCI',
-        # 'E5L_1_L_CCI',
+        'E5L_1_L_CCI',
         # ### ERA5-Land CCI WordCover ###
         # 'E5L_5_CCI_WC',
         # 'E5L_1_CCI_WC',
-        # 'E5L_1_L_CCI_WC',
+        'E5L_1_L_CCI_WC',
         # ### BARRA CCI ###
         # 'BR2_5_CCI',
         # 'BR2_1_CCI',
-        # 'BR2_1_L_CCI',
+        'BR2_1_L_CCI',
         # ### BARRA CCI WorldCover ###
         # 'BR2_5_CCI_WC',
         # 'BR2_1_CCI_WC',
@@ -62,11 +63,11 @@ exps = [
         # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
-        # 'BR2_1_L_IGBP',
+        'BR2_1_L_IGBP',
         # ### BARRA CCI no urban ###
         # 'BR2_5_CCI_no_urban',
         # 'BR2_1_CCI_no_urban',
-        # 'BR2_1_L_CCI_no_urban',
+        'BR2_1_L_CCI_no_urban',
         ]
 
 ################## functions ##################
@@ -75,19 +76,30 @@ def main_plotting():
 
     # select UTC = 1 or midday AEST
     # dss = ds.sel(time=ds.time.dt.hour==3)
-    dss = ds.isel(time=1)
+    # dss = ds.isel(time=1)
+    # dss = ds.sel(latitude=slice(-35,-33), longitude=slice(150,152)).sel(time=slice(None,'2017-01-02'))
 
-    # vopts = cf.update_opts(opts,
-    #             vmin=15,
-    #             vmax=30,
-    #             cmap='turbo',
-    #         )
+    sids, suffix = ['068192', '066212', '066059', '067119', '066194', '068257', '066037', '066161', '066062', '066137', '061425', '067108', '067113', '063292'], '_sydney_select'
 
-    fig, fname = cf.plot_spatial(exps, dss, opts, sids, stations, obs, slabels=False,
-                 fill_obs=True)
-    fig, fname = cf.plot_spatial_difference(exps[0],exps[2], dss, vopts, sids=[], stations=None, obs=None)
+    for hour in range(0,24):
 
-    fig.savefig(f'{plotpath}/{fname}', dpi=300, bbox_inches='tight')
+        dss = ds.copy()
+        dss = dss.sel(time=slice('2017-01-11','2017-01-18'))
+        dss = dss.sel(time=dss.time.dt.hour==hour)
+        dss = dss.sel(latitude=slice(-34.4,-33.3), longitude=slice(150.2,151.6))
+        dss = dss.compute()
+
+        vopts = cf.update_opts(opts,
+                    vmin=20,
+                    vmax=35,
+                    # cmap='turbo',
+                )
+
+        fig, fname = cf.plot_spatial(exps, dss, vopts, sids, stations, obs, slabels=True,
+                    fill_obs=True, ncols=3, distance=25)
+        # fig, fname = cf.plot_spatial_difference(exps[0],exps[2], dss, vopts, sids=[], stations=None, obs=None)
+
+        fig.savefig(f'{plotpath}/{fname}', dpi=300, bbox_inches='tight')
 
     return
 
@@ -177,20 +189,6 @@ def open_output_netcdf(exps,opts,variable):
 
     return ds
 
-def trim_sids(sids):
-    
-    # remove sids outside ds extent
-    xdsmin,ydsmin,xdsmax,ydsmax =cf.get_bounds(ds)
-    sids = [sid for sid in sids if (stations.loc[sid,'lon']>xdsmin) and (stations.loc[sid,'lon']<xdsmax)
-                and (stations.loc[sid,'lat']>ydsmin) and (stations.loc[sid,'lat']<ydsmax)]
-    
-    # remove those without obs data
-    sdate,edate = pd.Timestamp(ds.time.min().values),pd.Timestamp(ds.time.max().values)
-    # remove any column that is all nan between sdate and edate
-    sids = [sid for sid in sids if not (obs.loc[sdate:edate, sid].isna().all())]
-
-    return sids
-
 def set_up_plot_attrs(exps, plotpath):
 
     # predefine colours for experiments
@@ -232,7 +230,6 @@ if __name__ == "__main__":
     from dask.distributed import Client
 
     n_workers = int(os.environ['PBS_NCPUS'])
-    worker_memory = (int(os.environ['PBS_VMEM']) / n_workers)
     local_directory = os.path.join(os.environ['PBS_JOBFS'], 'dask-worker-space')
     try:
         print(client)
@@ -240,7 +237,6 @@ if __name__ == "__main__":
         client = Client(
             n_workers=n_workers,
             threads_per_worker=1, 
-            memory_limit = worker_memory, 
             local_directory = local_directory)
 
     ################## get model data ##################
@@ -267,7 +263,7 @@ if __name__ == "__main__":
             obs, stations = cf.get_flux_obs(variable, local_time_offset=None)
         else:
             print('getting station obs')
-            obs, stations = cf.process_station_netcdf(variable, stationpath, local_time_offset=11)
+            obs, stations = cf.process_station_netcdf(variable, stationpath, local_time_offset=local_time_offset)
         ###     obs, stations = cf.get_station_obs(stationpath, opts, local_time_offset=None, resample=opts['obs_period'], method='instant')
 
         # trim obs dataframe to ds time period
@@ -280,7 +276,12 @@ if __name__ == "__main__":
         sids, suffix = stations.index.tolist(), '_all'
 
         # trim sids to those in ds
-        sids, suffix = trim_sids(sids), '_trimmed'
+        sids, suffix = cf.trim_sids(ds, obs, sids, stations), '_trimmed'
+
+        if local_time: # convert to local time
+            ds = ds.assign_coords(time=ds.time + pd.Timedelta(f'{local_time_offset}h'))
+            obs.index = obs.index + pd.Timedelta(f'{local_time_offset}h')
+            cf.local_time = local_time
 
         # # special sids
         # sids, suffix = ['066062','066137','070351'], '_special'
@@ -292,9 +293,9 @@ if __name__ == "__main__":
         #     )
         # _plot_stations(ds, obs, sids, stations, vopts, suffix)
 
-        sids = ['067105','066212','070330','061260','066059','068239','063291','066043','061078','070351','066194','066161','061425','063303','067113']
+        # sids = ['067105','066212','070330','061260','066059','068239','063291','066043','061078','070351','066194','066161','061425','063303','067113']
 
-        main_animation(suffix=exps[0])
+        # main_animation(suffix=exps[0])
     
     print('done!')
 

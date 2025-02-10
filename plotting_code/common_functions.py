@@ -1,4 +1,5 @@
 import os
+import iris
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -11,25 +12,12 @@ import cartopy.crs as ccrs
 import cartopy.geodesic as cgeo
 import glob
 
-def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
-                      cbar_loc='right',slabels=False,
-                      fill_obs=False,distance=100,fill_size=15,ncols=2,fill_diff=False,
-                      show_mean=False,suffix=''):
-
-    for i,time in enumerate(ds.time.values):
-        print(f'{i+1} of {len(ds.time)}')
-        dss = ds.isel(time=i)
-        fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
-                                 slabels,fill_obs,distance,fill_size,ncols,fill_diff,
-                                 show_mean,suffix)
-        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-        plt.close('all')
-
-    return
-
 def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels=False,
                  fill_obs=False, distance=100, fill_size=15, ncols=2, fill_diff=False,
                  diff_vals=2, show_mean=True, suffix=''):
+
+    # limit obs to pass to those matching ds timestamps
+    obs_to_pass = obs.loc[dss.time.values]
 
     if dss.time.size>1:
         print('dss includes time period')
@@ -53,7 +41,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
             # from int to HH:MM format
             timestamp = pd.to_datetime(time, format='%H').strftime('%H:%M')
 
-    tz = 'UTC'
+    tz = 'AEST' if local_time else 'UTC'
 
     cbar_title = f"{opts['plot_title'].capitalize()} [{opts['units']}]"
     cmap       = opts['cmap']
@@ -99,35 +87,70 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
         ax.tick_params(axis='y', labelleft=subplotspec.is_first_col(), labelright=False, labelsize=8)
         ax.tick_params(axis='x', labelbottom=subplotspec.is_last_row(), labeltop=False, labelsize=8) 
 
+        # station labels and values
         if len(sids) > 0:
-            # station labels and values
-            obs_to_pass = obs.copy()
-
-            if fill_diff:
-                # select only exp within obs_to_pass dicts
-                for sid in sids:
-                    lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
-                    obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs[sid].loc[stime:etime].mean()
-            print_station_labels(ax,im,obs_to_pass,sids,stations,time,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
+            # remove sids outside ds extent
+            xdsmin,ydsmin,xdsmax,ydsmax = get_bounds(dss)
+            sids = [sid for sid in sids if (stations.loc[sid,'lon']>xdsmin) and (stations.loc[sid,'lon']<xdsmax)
+                        and (stations.loc[sid,'lat']>ydsmin) and (stations.loc[sid,'lat']<ydsmax)]
+            # if fill_diff: # difference between obs and sim
+            #     for sid in sids:
+            #         lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+            #         obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs_to_pass[sid]
+            print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
 
         # print mean spatial value on plot
         if show_mean:
-            value_str = f"mean: {opts['fmt'].format(dss[exp].mean().values)} [{opts['units']}]"
+            value_str = f"model domain mean: {opts['fmt'].format(dss[exp].mean().values)} [{opts['units']}]"
             ax.text(0.01,0.99, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)
+            if len(sids) > 0:
+                # add mean obs value
+                obs_mean = obs_to_pass.mean(axis=None)
+                value_str = f"obs mean: {opts['fmt'].format(obs_mean)} [{opts['units']}]"
+                ax.text(0.01,0.96, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)
+
+                # calculate model bias at station locations
+                sid_mean_list = []
+                for sid in sids:
+                    lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+                    sid_mean = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs_to_pass[sid]
+                    if sid_mean.size > 1:
+                        sid_mean = sid_mean.mean()
+                    sid_mean_list.append(sid_mean)
+                sid_mean = np.array(sid_mean_list).mean()
+                value_str = f"bias at stations: {opts['fmt'].format(sid_mean)} [{opts['units']}]"
+                ax.text(0.01,0.93, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)                
 
         if subplotspec.is_last_col():
             cbar = custom_cbar(ax,im,cbar_loc)  
             cbar.ax.set_ylabel(cbar_title)
             cbar.ax.tick_params(labelsize=8)
 
-    title = f"{opts['plot_title'].capitalize()} [{opts['units']}] {timestamp} {tz}"
+    title = f"{opts['plot_title'].capitalize()} [{opts['units']}] {timestamp} [{tz}]"
     fig.suptitle(title,y=0.99)
     fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.90,wspace=0.05,hspace=0.15)
 
     timestamp = timestamp.replace(' ','_').replace(':','')
-    fname = f"{opts['plot_fname']}_spatial_{timestamp}{suffix}.png"
+    fname = f"{opts['plot_fname']}_spatial_{timestamp}_{tz}{suffix}.png"
+    print('fname:', fname)
 
     return fig,fname
+
+def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
+                      cbar_loc='right',slabels=False,
+                      fill_obs=False,distance=100,fill_size=15,ncols=2,fill_diff=False,
+                      show_mean=False,suffix=''):
+
+    for i,time in enumerate(ds.time.values):
+        print(f'{i+1} of {len(ds.time)}')
+        dss = ds.isel(time=i)
+        fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
+                                 slabels,fill_obs,distance,fill_size,ncols,fill_diff,
+                                 show_mean,suffix)
+        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
+        plt.close('all')
+
+    return f'completed, see: {plotpath}/{fname}'
 
 def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
                             cbar_loc='right',cbar_levels=21,slabels=False,fill_obs=False,
@@ -196,7 +219,7 @@ def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
     if len(sids) > 0:
         if dss.time.size == 1:
             print('plotting observation timestep')
-            print_station_labels(ax,im,obs,sids,stations,timestamp,opts,slabels,fill_obs,fill_size)
+            print_station_labels(ax,im,obs,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size)
         elif dss.time.size > 1:
             print('calculating mean of observations')
             print_mean_station_labels(ax,im,da,obs,sids,stations,time_start,time_end,opts['obs_key'],slabels,fill_obs,fill_size,
@@ -221,18 +244,19 @@ def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
 
     return fig,fname
 
-def print_station_labels(ax,im,obs_to_pass,sids,stations,timestamp,opts,
+def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
                          slabels,fill_obs,fill_size,fill_diff=False,diff_vals=2):
 
     for sid in sids:
-        print(sid)
         lat,lon,name = stations.loc[sid,'lat'],stations.loc[sid,'lon'],stations.loc[sid,'name'].strip()
         if slabels:
             ax.annotate(text=name[:3], xycoords='data', xy=(lon,lat), xytext=(0,3),
                 textcoords='offset points', fontsize=4,color='k',ha='center', zorder=10)
         if fill_obs:
             try:
-                obs_val = obs_to_pass.loc[timestamp,sid]
+                obs_val = obs_to_pass[sid]
+                if len(obs_val) > 1:
+                    obs_val = obs_val.mean()
                 if np.isnan(obs_val):
                     ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
                 elif fill_diff:
@@ -247,7 +271,7 @@ def print_station_labels(ax,im,obs_to_pass,sids,stations,timestamp,opts,
                 else:
                     ax.scatter(lon,lat, c=obs_val, norm=im.norm, cmap=im.cmap, marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
             except Exception as e:
-                print(f'exception plotting {sid} obs at {timestamp}: {e}')
+                print(f'exception plotting {sid} obs at {stime} to {etime}: {e}')
                 ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
         else:
             ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
@@ -688,7 +712,7 @@ def calc_all_stats(ds, obs, sids, exps, stations, opts):
 
 ###### obsevations ######
 
-def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None, local_time_offset=11):
+def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None, local_time_offset=10):
 
     '''
     Opens all station 5min netcdf files, collects single variable and returns xarray dataset
@@ -911,7 +935,6 @@ def get_station_obs(stationpath,opts,local_time_offset=None,resample='1H',method
             obs[sid] = pd.DataFrame(columns=[obs_key])
 
     return obs,stations
-
 
 def get_tidy_aws_map(reversed=False):
 
@@ -1161,6 +1184,24 @@ def calc_percent_within_threshold(sim,obs,threshold=2):
 
     return metric,sim_within
 
+def trim_sids(ds, obs, sids, stations):
+
+    '''
+    Remove station ids (sids) that are outside the model domain or have no obs data
+    '''
+    
+    # remove sids outside ds extent
+    xdsmin,ydsmin,xdsmax,ydsmax = get_bounds(ds)
+    sids = [sid for sid in sids if (stations.loc[sid,'lon']>xdsmin) and (stations.loc[sid,'lon']<xdsmax)
+                and (stations.loc[sid,'lat']>ydsmin) and (stations.loc[sid,'lat']<ydsmax)]
+    
+    # remove those without obs data
+    sdate,edate = pd.Timestamp(ds.time.min().values),pd.Timestamp(ds.time.max().values)
+    # remove any column that is all nan between sdate and edate
+    sids = [sid for sid in sids if not (obs.loc[sdate:edate, sid].isna().all())]
+
+    return sids
+
 def get_variable_opts(variable):
     '''standard variable options for plotting. to be updated within master script as needed'''
 
@@ -1350,6 +1391,54 @@ def get_variable_opts(variable):
             'fmt'       : '{:.1f}',
             })
 
+    elif variable == 'surface_net_longwave_flux':
+        opts.update({
+            'constraint': 'surface_net_downward_longwave_flux',
+            'plot_title': 'surface net longwave flux',
+            'plot_fname': 'surface_net_longwave_flux',
+            'units'     : 'W m-2',
+            'fname'     : 'umnsaa_psurfa',
+            'vmin'      : -250,
+            'vmax'      : 50,
+            'cmap'      : 'inferno',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'surface_net_shortwave_flux':
+        opts.update({
+            'constraint': 'surface_net_downward_shortwave_flux',
+            'plot_title': 'surface net shortwave flux',
+            'plot_fname': 'surface_net_shortwave_flux',
+            'units'     : 'W m-2',
+            'fname'     : 'umnsaa_psurfa',
+            'vmin'      : -250,
+            'vmax'      : 50,
+            'cmap'      : 'inferno',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'surface_downwelling_shortwave_flux':
+        opts.update({
+            'constraint': 'surface_downwelling_shortwave_flux_in_air',
+            'units'     : 'W m-2',
+            'fname'     : 'umnsaa_psurfa',
+            'vmin'      : -250,
+            'vmax'      : 50,
+            'cmap'      : 'inferno',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'surface_downwelling_longwave_flux':
+        opts.update({
+            'constraint': 'surface_downwelling_longwave_flux_in_air',
+            'units'     : 'W m-2',
+            'fname'     : 'umnsaa_psurfa',
+            'vmin'      : -250,
+            'vmax'      : 50,
+            'cmap'      : 'inferno',
+            'fmt'       : '{:.1f}',
+            })
+
     elif variable == 'soil_moisture_l1':
         opts.update({
             'constraint': 'moisture_content_of_soil_layer',
@@ -1408,9 +1497,6 @@ def get_variable_opts(variable):
 
     elif variable == 'surface_temperature':
         opts.update({
-            'constraint': 'surface_temperature',
-            'plot_title': 'land surface temperature',
-            'plot_fname': 'surface_temperature',
             'units'     : '°C',
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 0,
@@ -1418,11 +1504,32 @@ def get_variable_opts(variable):
             'cmap'      : 'inferno',
             })
 
-    elif variable == 'soil_temperature_5cm':
+    elif variable == 'boundary_layer_thickness':
+        opts.update({
+            'constraint': 'm01s00i025',
+            'plot_title': 'boundary layer thickness',
+            'plot_fname': 'boundary_layer_thickness',
+            'units'     : '°C',
+            'fname'     : 'umnsaa_pvera',
+            'vmin'      : 0,
+            'vmax'      : 3000,
+            'cmap'      : 'turbo_r',
+            })
+
+    elif variable == 'surface_air_pressure':
+        opts.update({
+            'units'     : 'Pa',
+            'fname'     : 'umnsaa_pvera',
+            'vmin'      : 88000,
+            'vmax'      : 104000,
+            'cmap'      : 'turbo_r',
+            })
+
+    elif variable == 'soil_temperature_l1':
         opts.update({
             'constraint': 'soil_temperature',
             'plot_title': 'soil temperature (5cm)',
-            'plot_fname': 'soil_temperature_5cm',
+            'plot_fname': 'soil_temperature_l1',
             'units'     : '°C',
             'level'     : 0.05,
             'obs_key'   : 'Tsoil05',
@@ -1433,15 +1540,96 @@ def get_variable_opts(variable):
             'fmt'       : '{:.2f}',
             })
 
+    elif variable == 'soil_temperature_l2':
+        opts.update({
+            'constraint': 'soil_temperature',
+            'plot_title': 'soil temperature (22.5cm)',
+            'plot_fname': 'soil_temperature_l2',
+            'units'     : '°C',
+            'level'     : 0.225,
+            'fname'     : 'umnsaa_pverb',
+            'vmin'      : None,
+            'vmax'      : None,
+            'cmap'      : 'turbo',
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'soil_temperature_l3':
+        opts.update({
+            'constraint': 'soil_temperature',
+            'plot_title': 'soil temperature (67.5cm)',
+            'plot_fname': 'soil_temperature_l3',
+            'units'     : '°C',
+            'level'     : 0.675,
+            'fname'     : 'umnsaa_pverb',
+            'vmin'      : None,
+            'vmax'      : None,
+            'cmap'      : 'turbo',
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'soil_temperature_l4':
+        opts.update({
+            'constraint': 'soil_temperature',
+            'plot_title': 'soil temperature (200cm)',
+            'plot_fname': 'soil_temperature_l4',
+            'units'     : '°C',
+            'level'     : 2,
+            'fname'     : 'umnsaa_pverb',
+            'vmin'      : None,
+            'vmax'      : None,
+            'cmap'      : 'turbo',
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'toa_outgoing_shortwave_flux':
+        opts.update({
+            'constraint': 'm01s01i208',
+            'plot_title': 'outgoing shortwave radiation flux (top of atmosphere)',
+            'plot_fname': 'toa_shortwave',
+            'units'     : 'W/m2',
+            'fname'     : 'umnsaa_pvera',
+            'vmin'      : 50,
+            'vmax'      : 400,
+            'cmap'      : 'Greys_r',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'toa_outgoing_shortwave_flux_corrected':
+        opts.update({
+            'constraint': 'm01s01i205',
+            'plot_title': 'outgoing shortwave radiation flux corrected (top of atmosphere)',
+            'plot_fname': 'toa_shortwave_corrected',
+            'units'     : 'W/m2',
+            'fname'     : 'umnsaa_pvera',
+            'vmin'      : 50,
+            'vmax'      : 400,
+            'cmap'      : 'Greys_r',
+            'fmt'       : '{:.1f}',
+            })
+
     elif variable == 'toa_outgoing_longwave_flux':
         opts.update({
             'constraint': 'toa_outgoing_longwave_flux',
-            'plot_title': 'outgoing longwave flux (top of atmosphere)',
+            'plot_title': 'outgoing longwave radiation flux (top of atmosphere)',
             'plot_fname': 'toa_longwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 50,
             'vmax'      : 400,
+            'cmap'      : 'Greys_r',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'toa_outgoing_shortwave_radiation_flux':
+        opts.update({
+            'constraint': 'm01s01i205',
+            'plot_title': 'outgoing shortwave radiation flux (top of atmosphere)',
+            'plot_fname': 'toa_shortwave',
+            'units'     : 'W/m2',
+            'fname'     : 'umnsaa_vera',
+            'vmin'      : 0, 
+            'vmax'      : 1000,
             'cmap'      : 'Greys_r',
             'fmt'       : '{:.1f}',
             })
@@ -1538,7 +1726,7 @@ def get_variable_opts(variable):
             'obs_key'   : 'SLP',
             'fname'     : 'umnsaa_pverb',
             'vmin'      : 96000,
-            'vmax'      : 105000,
+            'vmax'      : 104000,
             'cmap'      : 'turbo_r',
             'fmt'       : '{:.1f}',
             })
@@ -1556,19 +1744,6 @@ def get_variable_opts(variable):
             'fmt'       : '{:.2f}',
             })
         
-    elif variable == 'surface_net_downward_longwave_flux':
-        opts.update({
-            'constraint': 'surface_net_downward_longwave_flux',
-            'plot_title': 'surface net longwave flux',
-            'plot_fname': 'surface_net_longwave_flux',
-            'units'     : 'W m-2',
-            'fname'     : 'umnsaa_pvera',
-            'vmin'      : -250,
-            'vmax'      : 50,
-            'cmap'      : 'inferno',
-            'fmt'       : '{:.1f}',
-            })
-        
     elif variable == 'visibility':
         opts.update({
             'constraint': 'visibility_in_air',
@@ -1581,6 +1756,17 @@ def get_variable_opts(variable):
             'vmax'      : 12000,
             'cmap'      : 'viridis_r',
             'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'cloud_area_fraction':
+        opts.update({
+            'constraint': 'm01s09i217',
+            'units'     : '1',
+            'fname'     : 'umnsaa_pverb',
+            'vmin'      : 0,
+            'vmax'      : 1,
+            'cmap'      : 'Greys',
+            'fmt'       : '{:.3f}',
             })
 
     elif variable == 'total_precipitation_rate':
@@ -1637,16 +1823,30 @@ def get_variable_opts(variable):
             'fmt'       : '{:.1f}',
             })
         
-    elif variable == 'stratiform_rainfall_amount_accumulation':
+    elif variable == 'stratiform_rainfall_amount':
         opts.update({
             'constraint': iris.Constraint(
                 name='stratiform_rainfall_amount', 
                 cube_func=lambda cube: iris.coords.CellMethod(
                     method='mean', coords='time', intervals='1 hour'
                     ) in cube.cell_methods),
-            'plot_title': 'stratiform rainfall amount accumulation',
-            'plot_fname': 'strat_rain_accum',
             'units'     : 'kg m-2',
+            'obs_key'   : 'precip_last_aws_obs',
+            'fname'     : 'umnsaa_pverb',
+            'vmin'      : 0,
+            'vmax'      : 100,
+            'cmap'      : 'gist_earth_r',
+            'fmt'       : '{:.1f}',
+            })
+
+    elif variable == 'stratiform_rainfall_flux':
+        opts.update({
+            'constraint': iris.Constraint(
+                name='stratiform_rainfall_flux', 
+                cube_func=lambda cube: iris.coords.CellMethod(
+                    method='mean', coords='time', intervals='1 hour'
+                    ) in cube.cell_methods),
+            'units'     : 'kg m-2 s-1',
             'obs_key'   : 'precip_last_aws_obs',
             'fname'     : 'umnsaa_pverb',
             'vmin'      : 0,
@@ -1746,11 +1946,49 @@ def get_variable_opts(variable):
             'constraint': 'subsurface_runoff_amount',
             'plot_title': 'subsurface runoff amount',
             'plot_fname': 'subsurface_runoff_amount',
+            'units'     : 'kg m-2',
             'fname'     : 'umnsaa_psurfb',
             'vmin'      : None,
             'vmax'      : None,
             'cmap'      : 'cividis',
             'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'surface_runoff_flux':
+        opts.update({
+            'constraint': 'surface_runoff_flux',
+            'plot_title': 'surface runoff flux',
+            'plot_fname': 'surface_runoff_flux',
+            'units'     : 'kg m-2 s-1',
+            'fname'     : 'umnsaa_psurfb',
+            'vmin'      : 0,
+            'vmax'      : 0.01,
+            'cmap'      : 'Blues',
+            'fmt'       : '{:.4f}',
+            })
+    
+    elif variable == 'subsurface_runoff_flux':
+        opts.update({
+            'constraint': 'subsurface_runoff_flux',
+            'plot_title': 'subsurface runoff flux',
+            'plot_fname': 'subsurface_runoff_flux',
+            'units'     : 'kg m-2 s-1',
+            'fname'     : 'umnsaa_psurfb',
+            'vmin'      : None,
+            'vmax'      : 0.001,
+            'cmap'      : 'cividis',
+            'fmt'       : '{:.5f}',
+            })
+
+    elif variable == 'surface_total_moisture_flux':
+        opts.update({
+            'constraint': 'm01s03i223',
+            'units'     : 'kg m-2 s-1',
+            'fname'     : 'umnsaa_psurfc',
+            'vmin'      : None,
+            'vmax'      : 0.0002,
+            'cmap'      : 'cividis',
+            'fmt'       : '{:.6f}',
             })
 
     elif variable == 'landfrac':

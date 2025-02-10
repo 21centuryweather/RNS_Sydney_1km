@@ -6,7 +6,7 @@
 #PBS -l storage=gdata/hh5+gdata/access+gdata/ce10+scratch/ce10+gdata/vk83
 #PBS -l wd
 #PBS -l jobfs=10GB
-#PBS -P ce10
+#PBS -P fy29
 
 # set -eu
 module purge
@@ -18,41 +18,41 @@ CYCLPATH=/scratch/ce10/mjl561/cylc-run/rns_ostia/share/cycle
 # get list of CYCLE directories and extract the CYCLE time
 CYCLES=$(ls -d $CYCLPATH/* | xargs -n 1 basename)
 
-# # CYCLE=20170101T0000Z
-# for CYCLE in $CYCLES; do
-#     echo $CYCLE um2nc
+# CYCLE=20170101T0000Z
+for CYCLE in $CYCLES; do
+    echo $CYCLE um2nc
 
-#     # get list of um output directories in the cycle path
-#     UMDIRS=$(ls -d $CYCLPATH/$CYCLE/*/*/*/um)
+    # get list of um output directories in the cycle path
+    UMDIRS=$(ls -d $CYCLPATH/$CYCLE/*/*/*/um)
 
-#     # loop over directories
-#     for DIR in $UMDIRS; do
-#         # get list of files in the directory
-#         FILES=$(ls $DIR/umnsaa_*)
+    # loop over directories
+    for DIR in $UMDIRS; do
+        # get list of files in the directory
+        FILES=$(ls $DIR/umnsaa_*)
 
-#         # loop over all files
-#         for FILE in $FILES; do
-#             # skip if FILE has . in name (um outputs have no extension)
-#             if [[ $FILE == *"."* ]]; then
-#                 continue
-#             # skip if FILE has _cb in name (boundary outputs)
-#             elif [[ $FILE == *"_cb"* ]]; then
-#                 continue
-#             fi
+        # loop over all files
+        for FILE in $FILES; do
+            # skip if FILE has . in name (um outputs have no extension)
+            if [[ $FILE == *"."* ]]; then
+                continue
+            # skip if FILE has _cb in name (boundary outputs)
+            elif [[ $FILE == *"_cb"* ]]; then
+                continue
+            fi
 
-#             # check if file has already been processed
-#             if [ -f ${FILE}.nc ]; then
-#                 echo ${FILE}.nc already exists
-#             else
-#                 # convert to netcdf using um2nc
-#                 # https://github.com/ACCESS-NRI/um2nc-standalone
-#                 echo processing $FILE
-#                 um2nc $FILE ${FILE}.nc
+            # check if file has already been processed
+            if [ -f ${FILE}.nc ]; then
+                echo ${FILE}.nc already exists
+            else
+                # convert to netcdf using um2nc
+                # https://github.com/ACCESS-NRI/um2nc-standalone
+                echo processing $FILE
+                um2nc $FILE ${FILE}.nc
 
-#             fi
-#         done
-#     done
-# done
+            fi
+        done
+    done
+done
 
 module purge
 module load nco
@@ -88,8 +88,13 @@ for CYCLE in $CYCLES; do
                 ncrcat ${FILE}[0-9][0-9][0-9].nc $DIR/nc/${CYCLE}_${FNAME}.nc
             fi
 
+            # remove single nc files after concatenation
+            rm $DIR/*.nc
         done
     done
 done
+
+# now concatenate files in nc directory from all cycles into one for each filename type
+
 
 echo done!

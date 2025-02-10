@@ -40,9 +40,17 @@ variables_done = [
     'dew_point_temperature', 'surface_net_downward_longwave_flux','wind_u','wind_v',
     'specific_humidity','specific_humidity_lowest_atmos_level','wind_speed_of_gust',
     'soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4',
+    'soil_temperature_l1','soil_temperature_l2','soil_temperature_l3','soil_temperature_l4',
+    'surface_runoff_flux','subsurface_runoff_flux','surface_total_moisture_flux',
+    'surface_temperature','boundary_layer_thickness','surface_air_pressure',
+    'fog_area_fraction','visibility','cloud_area_fraction',
+    'stratiform_rainfall_amount','stratiform_rainfall_flux',
+    'toa_outgoing_shortwave_flux','toa_outgoing_shortwave_flux_corrected','toa_outgoing_longwave_flux',
+    'surface_net_longwave_flux',
     ]
 
-variables = ['latent_heat_flux']
+problematic =['total_precipitation_rate']
+variables = ['surface_net_shortwave_flux','surface_downwelling_shortwave_flux','surface_downwelling_longwave_flux']
 
 ###############################################################################
 # dictionary of experiments
@@ -102,6 +110,11 @@ def get_um_data(exp,opts):
             print(e)
             return None
 
+        # fix time dimension name if needed
+        if 'time' not in da.dims:
+            print('WARNING: updating time dimension name from dim_0')
+            da = da.swap_dims({'dim_0': 'time'})
+
         da = filter_odd_times(da)
 
         if opts['constraint'] in [
@@ -147,7 +160,6 @@ if __name__ == "__main__":
     print('load dask')
     from dask.distributed import Client
     n_workers = int(os.environ['PBS_NCPUS'])
-    worker_memory = (int(os.environ['PBS_VMEM']) / n_workers)
     local_directory = os.path.join(os.environ['PBS_JOBFS'], 'dask-worker-space')
     try:
         print(client)
@@ -155,7 +167,6 @@ if __name__ == "__main__":
         client = Client(
             n_workers=n_workers,
             threads_per_worker=1, 
-            memory_limit = worker_memory, 
             local_directory = local_directory)
 
     ################## get model data ##################

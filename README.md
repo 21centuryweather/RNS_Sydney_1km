@@ -1,3 +1,10 @@
+Contributions:
+ - Mathew Lipson: documentation, experiment design, running experiments, ancillary generation, analysis
+ - Chermelle Engel: suite development
+ - Andrew Brown: experiment design
+ - Negan Nazarian: experiment design, resources
+ - Jason Evans: experiment design
+
 # RNS_SY_1km
 
 This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. This OSTIA pre-alpha release is NOT CURRENTLY SUPPORTED by NRI, as it is being developed/tested. For more information contact Chermelle Engel.
