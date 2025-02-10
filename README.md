@@ -1,7 +1,8 @@
-Contributions:
+## Contributions
+
  - Mathew Lipson: documentation, experiment design, running experiments, ancillary generation, analysis
+ - Andrew Brown: experiment design, analysis
  - Chermelle Engel: suite development
- - Andrew Brown: experiment design
  - Negan Nazarian: experiment design, resources
  - Jason Evans: experiment design
 
