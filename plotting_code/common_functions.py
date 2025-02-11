@@ -17,7 +17,10 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
                  diff_vals=2, show_mean=True, suffix=''):
 
     # limit obs to pass to those matching ds timestamps
-    obs_to_pass = obs.loc[dss.time.values]
+    if not obs.empty:
+        obs_to_pass = obs.loc[dss.time.values]
+    else:
+        obs_to_pass = pd.DataFrame()
 
     if dss.time.size>1:
         print('dss includes time period')
@@ -68,7 +71,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
     for i,exp in enumerate(exps):
         ax = axes.flatten()[i] if len(exps)>1 else axes
         print(exp)
-        im = dss[exp].plot(ax=ax,cmap=cmap,vmin=vmin,vmax=vmax,add_colorbar=False, transform=proj)
+        im = dss[exp].plot(ax=ax, cmap=cmap, vmin=vmin, vmax=vmax, add_colorbar=False, transform=proj)
 
         # # for cartopy
         ax.xaxis.set_visible(True)
@@ -78,7 +81,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
         ax.set_extent([left, right, bottom, top], crs=proj)
 
         ax = distance_bar(ax,distance)
-        ax.set_title(exp)
+        ax.set_title(exp_plot_titles[exp])
         
         # show ticks on all subplots but labels only on first column and last row
         subplotspec = ax.get_subplotspec()
@@ -97,14 +100,14 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
             #     for sid in sids:
             #         lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
             #         obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs_to_pass[sid]
-            print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
+            ov = print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
 
         # print mean spatial value on plot
         if show_mean:
             value_str = f"model domain mean: {opts['fmt'].format(dss[exp].mean().values)} [{opts['units']}]"
             ax.text(0.01,0.99, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)
             if len(sids) > 0:
-                # add mean obs value
+                # add mean obs value if obs at least 95% complete
                 obs_mean = obs_to_pass.mean(axis=None)
                 value_str = f"obs mean: {opts['fmt'].format(obs_mean)} [{opts['units']}]"
                 ax.text(0.01,0.96, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)
@@ -117,7 +120,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
                     if sid_mean.size > 1:
                         sid_mean = sid_mean.mean()
                     sid_mean_list.append(sid_mean)
-                sid_mean = np.array(sid_mean_list).mean()
+                sid_mean = pd.Series(sid_mean_list).mean()
                 value_str = f"bias at stations: {opts['fmt'].format(sid_mean)} [{opts['units']}]"
                 ax.text(0.01,0.93, value_str, fontsize=6, ha='left', va='top', color='0.65', transform=ax.transAxes)                
 
@@ -135,6 +138,43 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
     print('fname:', fname)
 
     return fig,fname
+
+def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
+                         slabels,fill_obs,fill_size,fill_diff=False,diff_vals=2):
+
+    obs_val = None
+
+    for sid in sids:
+        lat,lon,name = stations.loc[sid,'lat'],stations.loc[sid,'lon'],stations.loc[sid,'name'].strip()
+        if slabels:
+            ax.annotate(text=name[:3], xycoords='data', xy=(lon,lat), xytext=(0,3),
+                textcoords='offset points', fontsize=4,color='k',ha='center', zorder=10)
+        if fill_obs:
+            try:
+                obs_val = obs_to_pass[sid]
+                if isinstance(obs_val,pd.Series):
+                    print(f'WARNING: collapsing observed values b/w {stime} and {etime}')
+                    obs_val = obs_val.mean()
+                if np.isnan(obs_val):
+                    ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
+                elif fill_diff:
+                    im = ax.scatter(lon,lat, c=obs_val, cmap='coolwarm', vmin=-diff_vals, vmax=diff_vals,
+                                    marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
+                    ax.annotate(text=opts['fmt'].format(obs_val), xycoords='data', xy=(lon,lat), xytext=(0,-3),
+                        textcoords='offset points', fontsize=4,color='k',ha='center',va='top',zorder=10)
+                    if ax.get_subplotspec().is_last_col():
+                        cbar = custom_cbar(ax,im,cbar_loc='far_right')  
+                        cbar.ax.set_ylabel('diff (sim - obs)')
+                        cbar.ax.tick_params(labelsize=8)
+                else:
+                    ax.scatter(lon,lat, c=obs_val, norm=im.norm, cmap=im.cmap, marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
+            except Exception as e:
+                print(f'exception plotting {sid} obs at {stime} to {etime}: {e}')
+                ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
+        else:
+            ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
+
+    return obs_val
 
 def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
                       cbar_loc='right',slabels=False,
@@ -243,38 +283,6 @@ def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
     fname = f'{plot_fname}.png'
 
     return fig,fname
-
-def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
-                         slabels,fill_obs,fill_size,fill_diff=False,diff_vals=2):
-
-    for sid in sids:
-        lat,lon,name = stations.loc[sid,'lat'],stations.loc[sid,'lon'],stations.loc[sid,'name'].strip()
-        if slabels:
-            ax.annotate(text=name[:3], xycoords='data', xy=(lon,lat), xytext=(0,3),
-                textcoords='offset points', fontsize=4,color='k',ha='center', zorder=10)
-        if fill_obs:
-            try:
-                obs_val = obs_to_pass[sid]
-                if len(obs_val) > 1:
-                    obs_val = obs_val.mean()
-                if np.isnan(obs_val):
-                    ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
-                elif fill_diff:
-                    im = ax.scatter(lon,lat, c=obs_val, cmap='coolwarm', vmin=-diff_vals, vmax=diff_vals,
-                                    marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
-                    ax.annotate(text=opts['fmt'].format(obs_val), xycoords='data', xy=(lon,lat), xytext=(0,-3),
-                        textcoords='offset points', fontsize=4,color='k',ha='center',va='top',zorder=10)
-                    if ax.get_subplotspec().is_last_col():
-                        cbar = custom_cbar(ax,im,cbar_loc='far_right')  
-                        cbar.ax.set_ylabel('diff (sim - obs)')
-                        cbar.ax.tick_params(labelsize=8)
-                else:
-                    ax.scatter(lon,lat, c=obs_val, norm=im.norm, cmap=im.cmap, marker='o', s=fill_size, edgecolors='k', linewidth=0.5, zorder=10)
-            except Exception as e:
-                print(f'exception plotting {sid} obs at {stime} to {etime}: {e}')
-                ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
-        else:
-            ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
 
 def custom_cbar(ax,im,cbar_loc='right',ticks=None):
     """
@@ -463,7 +471,7 @@ def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, su
         ####################################
         ### STATS ON PLOT 
         try:
-            stats = all_stats[[sid]].T.stack().loc[sid].T
+            stats = all_stats[[sid]].T.stack(future_stack=True).loc[sid].T
             df = stats.map(lambda x: opts['fmt'].format(x)).rename(columns={
                     'MAE': f"MAE [{opts['units']}]",
                     'MBE': f"MBE [{opts['units']}]",
@@ -498,7 +506,7 @@ def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, su
         ax.set_title(station)
 
         ax.set_xlabel('')
-        ax.grid(color='0.75',linewidth=0.5,which='both')
+        ax.grid(color='0.8',linewidth=0.5,which='both')
 
         ax.tick_params(axis='x',labelsize=8, which='both')
 
@@ -546,7 +554,7 @@ def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, su
 
     return fig,fname,all_stats
 
-def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suffix=''):
+def plot_station_data_func_timeseries(ds, obs, sids, exps, stations, opts, func='mean', suffix=''):
     '''
     plot station data for a list of stations
     Args:
@@ -566,10 +574,10 @@ def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suf
     if len(sids)==0:
         print('no sids passed, exiting')
 
-    o = pd.DataFrame()
-    s = {exp:pd.DataFrame() for exp in exps}
+    o = []
+    s = {exp:[] for exp in exps}
 
-    lw, whichgrid, figwidth, yoff = 1, 'both', 7, 0.10
+    lw, whichgrid, figwidth, yoff = 1, 'both', 9, 0.10
     if isinstance(ds.time.min().values,np.datetime64):
         sdate,edate = pd.Timestamp(ds.time.min().values), pd.Timestamp(ds.time.max().values)
         if (edate - sdate).days > 30.: 
@@ -580,11 +588,13 @@ def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suf
     for sid in sids:
         station = stations.loc[sid,'name'].strip()
         print(f'gathering {station} data')
-        o[station] = obs.loc[sdate:edate,sid]
+        o.append(obs.loc[sdate:edate,sid])
         lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
 
         for exp in exps:
-            s[exp][station] = ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series()
+            s[exp].append(ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series())
+    s = {exp:pd.concat(s[exp],axis=1) for exp in exps}
+    o = pd.concat(o,axis=1)
 
     #########################
 
@@ -627,7 +637,7 @@ def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suf
     #     ax.set_ylim((opts['vmin'],opts['vmax']))
 
     ax.set_xlabel('')
-    ax.grid(color='0.5',linewidth=0.5,which=whichgrid,axis='both')
+    ax.grid(color='0.8',linewidth=0.5,which=whichgrid,axis='both')
 
     ax.tick_params(axis='x',labelsize=10, which='both')
     ax.set_ylabel(f"{opts['variable']} [{opts['units']}]")
@@ -643,10 +653,10 @@ def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suf
 
     if len(sids)==1:
         title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {stations.loc[sid]['name']}"
-        fname_suffix = f'_{sid}'
+        fname_suffix = f'{sid}{suffix}'
     else:
         title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {len(sids)} station {func}"
-        fname_suffix = f'{suffix}_{len(sids)}_{func}'
+        fname_suffix = f'{len(sids)}_{func}{suffix}'
     ax.set_title(title_str)
 
     ##### MEAN STATS ON PLOT
@@ -676,11 +686,215 @@ def plot_station_data_func(ds, obs, sids, exps, stations, opts, func='mean', suf
 
     #########################
 
-    fig.tight_layout()
+    # fig.tight_layout()
 
-    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs{fname_suffix}.png"
+    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs_{fname_suffix}.png"
     
     return fig,fname,stats
+
+def plot_station_data_avg_timeseries(ds,obs,sids,exps,stations,opts,suffix=''):
+
+    if len(sids)==0:
+        print('no sids passed, exiting')
+
+    o = []
+    s = {exp:[] for exp in exps}
+
+    lw,whichgrid,figwidth,yoff = 1,'both',9,0.10
+    if isinstance(ds.time.min().values,np.datetime64):
+        sdate,edate = pd.Timestamp(ds.time.min().values), pd.Timestamp(ds.time.max().values)
+        if (edate - sdate).days > 30.: 
+            lw,whichgrid,figwidth,yoff = 0.5,'major',18,0.06
+    else:
+        sdate,edate = ds.time.min().values.item(), ds.time.max().values.item()
+
+    all_stats = calc_all_stats(ds, obs, sids, exps, stations, opts)
+
+    for sid in sids:
+        station = stations.loc[sid,'name'].strip()
+        print(f'gathering {station} data')
+        o.append(obs.loc[sdate:edate,sid])
+        lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+
+        for exp in exps:
+            s[exp].append(ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series())
+    
+    s = {exp:pd.concat(s[exp],axis=1) for exp in exps}
+    o = pd.concat(o,axis=1)
+
+
+    #########################
+
+    plt.close('all')
+    fig,ax = plt.subplots(nrows=1,ncols=1,figsize=(figwidth,4))
+
+    o.mean(axis=1).plot(ax=ax,color='k',lw=0.5,marker='',
+                        label='AWS observations (mean)',zorder=10)
+
+    for exp in exps:
+        s[exp].mean(axis=1).plot(ax=ax,label=exp_plot_titles[exp], 
+            color=exp_colours[exp], alpha=0.75 ,marker='o', ms=1, lw=0.5,
+            ls='dotted' if next((True for v in ['_sm','_1p5'] if v in exp), False) else 'solid')
+            
+        
+    ax.set_xlim([s[exp].index[0],s[exp].index[-1]])
+
+    ymin,ymax = ax.get_ylim()
+    yrng = (ymax - ymin)*0.10
+    ax.set_ylim((ymin,ymax+yrng))
+
+    # if opts['constraint'] == 'air_temperature':
+    #     ax.set_ylim((opts['vmin']-5,opts['vmax']+5))
+    # else:
+    #     ax.set_ylim((opts['vmin'],opts['vmax']))
+
+    ax.set_xlabel('')
+    ax.grid(color='0.8',linewidth=0.5,which='major',axis='both')
+
+    ax.tick_params(axis='x',labelsize=10, which='both')
+    ax.set_ylabel(f"{opts['variable']} [{opts['units']}]")
+
+    handles, labels = ax.get_legend_handles_labels()
+    leg = dict(zip(labels, handles))
+
+    # loc = 'lower left' if constraint in ['soil_temperature','specific_humidity','relative_humidity'] else 'upper left'
+    # ax.legend(leg.values(),leg.keys(),loc=loc,fontsize=8,framealpha=1)
+
+    fig.legend(leg.values(),leg.keys(),loc='lower center',bbox_to_anchor=(0.5, -0.03),
+            fontsize=8,ncol=len(exps)+1,framealpha=1)
+
+    if len(sids)==1:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {stations.loc[sid]['name']}"
+        fname_suffix = f'{sid}{suffix}'
+    else:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {len(sids)} station average"
+        fname_suffix = f'{len(sids)}_avg{suffix}'
+    ax.set_title(title_str)
+
+    ##### MEAN STATS ON PLOT
+    df = all_stats.mean(axis=1).unstack().applymap(lambda x: opts['fmt'].format(x)).rename(columns={
+        'MAE': f"MAE [{opts['units']}]",
+        'MBE': f"MBE [{opts['units']}]",
+        'threshold': f"<±{opts['threshold']} {opts['units']} [%]",
+        })
+    
+    yloc=0.99
+    # exp names on plot
+    result_str = '\n'.join(df.index.to_list())
+    ax.text(0.01,yloc, '\n'+result_str, fontsize=7, ha='left', va='top', transform=ax.transAxes)
+    # MAE stats on plot
+    result_str = df.iloc[:,0].to_frame().to_string(index=False,header=True, justify='right')
+    ax.text(0.01+yoff*2,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # MBE stats on plot
+    result_str = df.iloc[:,1].to_frame().to_string(index=False,header=True, justify='right')
+    ax.text(0.01+yoff*3,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+    # threshold stats on plot
+    if opts['threshold'] is not None:
+        result_str = df.iloc[:,-1].to_frame().to_string(index=False,header=True, justify='right')
+        ax.text(0.01+yoff*4,yloc, result_str, fontsize=7, ha='right', va='top', transform=ax.transAxes)
+
+    print('mean stats')
+    print(df)
+
+    #########################
+
+    # fig.tight_layout()
+
+    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs_{fname_suffix}.png"
+
+    return fig,fname,all_stats
+
+def plot_station_data_bias_timeseries(ds,obs,sids,exps,stations,opts,suffix,resample=None):
+
+    o = []
+    s = {exp:[] for exp in exps}
+
+    all_stats_list = []
+
+    for sid in sids:
+        station = stations.loc[sid,'name'].strip()
+        print(f'gathering {station} data')
+        o.append(obs[sid])
+        lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
+
+        stats = pd.DataFrame()
+        for exp in exps:
+            stmp = ds[exp].sel(latitude=lat, longitude=lon,method='nearest').to_series()
+            s[exp].append(stmp)
+            
+            mae = calc_MAE(stmp,obs[sid])
+            mbe = calc_MBE(stmp,obs[sid])
+            rmse = calc_RMSE(stmp,obs[sid])
+            r = calc_R(stmp,obs[sid])
+
+            stats[exp] = pd.Series([mae,mbe,rmse,r],index=['MAE','MBE','RMSE','R'])
+
+        all_stats_list.append(stats.unstack())
+    all_stats = pd.concat(all_stats_list,axis=1)
+    o = pd.concat(o,axis=1)
+    s = {exp:pd.concat(s[exp],axis=1) for exp in exps}
+
+    #########################
+
+    plt.close('all')
+    fig,ax = plt.subplots(nrows=1,ncols=1,figsize=(9,5))
+
+    diff = {}
+    metric = 'MAE'
+    for exp in exps:
+
+        diff[exp] = (s[exp].mean(axis=1)-o.mean(axis=1)).dropna()
+        if diff[exp].count() == 0:
+            continue
+
+        if resample is not None:
+            diff[exp] = diff[exp].shift(0.5,freq=resample).resample(resample,offset='3H').mean()
+
+        result_str = opts['fmt'].format(all_stats.loc[(exp,metric)].mean()) + f' [{opts["units"]}]'
+
+        diff[exp].plot(ax=ax,label=f"{exp_plot_titles[exp]}: {metric} = {result_str}",
+            color=exp_colours[exp],alpha=0.8,marker='o',ms=3,
+            ls='dotted' if next((True for v in ['_sm','_1p5'] if v in exp), False) else 'solid')
+
+        # plot bias indicator
+        ax.axhline(y=diff[exp].mean(), xmin=1.0,xmax=1.025,clip_on=False,
+            color=exp_colours[exp],ls='dotted' if 'sm' in exp else 'solid')
+        text_str = opts['fmt'].format(diff[exp].mean())
+        ax.text(diff[exp].index[-1],diff[exp].mean(),text_str,
+            color=exp_colours[exp],va='bottom')
+
+    print('MAE:')
+    # print(all_stats.xs('MAE',level=1).mean(axis=1).to_string(float_format=opts['fmt']))
+    print(all_stats.xs('MAE',level=1).mean(axis=1).map(lambda x: opts['fmt'].format(x)))
+
+    ax.set_xlim([s[exp].index[0],s[exp].index[-1]])
+    ax.axhline(y=0,color='k',lw=1)
+
+    ax.set_xlabel('')
+    ax.grid(color='0.8',linewidth=0.5,which='both')
+
+    ax.tick_params(axis='x',labelsize=10, which='both')
+    ax.set_ylabel(f"{opts['variable']} bias [{opts['units']}]")
+
+    handles, labels = ax.get_legend_handles_labels()
+    leg = dict(zip(labels, handles))
+
+    ax.legend(leg.values(),leg.keys(),loc='upper center',ncol=2,bbox_to_anchor=(0.5, -0.12),fontsize=7,framealpha=1)
+
+    if len(sids)==1:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {stations.loc[sid]['name']} bias"
+        fname_suffix = f'{sid}{suffix}'
+    else:
+        title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {len(sids)} station mean bias"
+        fname_suffix = f'{len(sids)}_mean{suffix}'
+    ax.set_title(title_str)
+
+    # fig.tight_layout()
+
+    fname = f"{plotpath}/{opts['plot_fname']}_vs_obs_bias_{fname_suffix}.png"
+    
+    return fig,fname,all_stats
+
 
 def calc_all_stats(ds, obs, sids, exps, stations, opts):
 
@@ -710,6 +924,33 @@ def calc_all_stats(ds, obs, sids, exps, stations, opts):
 
     return all_stats
 
+###### hourly mean ######
+
+def calc_diurnal_obs(obs,ds):
+
+    diurnal_obs = pd.DataFrame()
+
+    sdate, edate = pd.Timestamp(ds.time.min().values), pd.Timestamp(ds.time.max().values)
+
+    for sid in obs.columns:
+        # select obs and ds with same timestamps
+        diurnal_obs[sid] = obs[sid].loc[sdate:edate].groupby(obs.index.hour).mean()
+
+    return diurnal_obs
+
+def calc_diurnal_sim(ds):
+
+    hourly_list = []
+    groups = ds.groupby('time.time')
+    for hour,item in groups:
+        dss = item.mean(dim='time')
+        # add time coordinate
+        hourly_list.append(dss.assign_coords(time=int(hour.strftime('%H'))).expand_dims('time')) # .strftime('%H:%M')
+        
+    diurnal_ds = xr.concat(hourly_list,dim='time')
+
+    return diurnal_ds
+
 ###### obsevations ######
 
 def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None, local_time_offset=10):
@@ -726,10 +967,6 @@ def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None
         stations (pandas dataframe): dataframe of station metadata
     '''
 
-    variable_map = {
-        'air_temperature' : 'Temperature',
-        }
-
     fname = f'{stationpath}/all_stations_{variable}_from_{sdate}.nc'
 
     # check if file has already been processed
@@ -737,41 +974,45 @@ def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None
         print(f'opening {fname}')
         obs_ds = xr.open_dataset(fname)
 
-    else:    
-        # get list of files and variable name
-        obs_var = variable_map[variable]
-        fnames = glob.glob(f'{stationpath}/*.nc')
+    # else:    # previous processing
+        # variable_map = {
+        #     'air_temperature' : 'Temperature',
+        #     'dew_point_temperature' : 'dew_point_temperature',
+        #     }
+    #     # get list of files and variable name
+    #     obs_var = variable_map[variable]
+    #     fnames = glob.glob(f'{stationpath}/*.nc')
 
-        da_list = []
+    #     da_list = []
 
-        for i, fname in enumerate(fnames):
-            print(f'{i}/{len(fnames)}: {fname}')
-            station_obs = xr.open_dataset(fname)
-            # rename Time to time
-            station_obs = station_obs.rename({'Time':'time'})
-            if obs_var in station_obs.data_vars:
-                print(f'  found {variable}')
-                da = station_obs[obs_var].sel(time=slice(sdate, edate))
-                da.attrs.update(station_obs.attrs)
-                da.name = da.attrs['Station_number']
-                da_list.append(da)
+    #     for i, fname in enumerate(fnames):
+    #         print(f'{i}/{len(fnames)}: {fname}')
+    #         station_obs = xr.open_dataset(fname)
+    #         # rename Time to time
+    #         station_obs = station_obs.rename({'Time':'time'})
+    #         if obs_var in station_obs.data_vars:
+    #             print(f'  found {variable}')
+    #             da = station_obs[obs_var].sel(time=slice(sdate, edate))
+    #             da.attrs.update(station_obs.attrs)
+    #             da.name = da.attrs['Station_number']
+    #             da_list.append(da)
 
-        print('merging station data into one dataset')
-        obs_ds = xr.merge(da_list)
-        obs_ds.attrs = {}
+    #     print('merging station data into one dataset')
+    #     obs_ds = xr.merge(da_list)
+    #     obs_ds.attrs = {}
 
-        # set time dtype encoding to normal integer
-        obs_ds.time.encoding.update({'dtype':'int32'})
+    #     # set time dtype encoding to normal integer
+    #     obs_ds.time.encoding.update({'dtype':'int32'})
 
-        # set all data_vars to float32
-        for var in obs_ds.data_vars:
-            obs_ds[var].encoding.update({'dtype':'float32'})
+    #     # set all data_vars to float32
+    #     for var in obs_ds.data_vars:
+    #         obs_ds[var].encoding.update({'dtype':'float32'})
 
-        # chunk for optimising timeseries
-        obs_ds = obs_ds.chunk({'time': -1})
+    #     # chunk for optimising timeseries
+    #     obs_ds = obs_ds.chunk({'time': -1})
 
-        # save to netcdf
-        obs_ds.to_netcdf(fname)
+    #     # save to netcdf
+    #     obs_ds.to_netcdf(fname)
 
     # convert to dataframe
     obs = obs_ds.to_dataframe()
@@ -782,19 +1023,91 @@ def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None
     station_data_list = []
     for sid in obs_ds.data_vars:
         station_data = pd.Series([
-            obs_ds[sid].attrs['Latitude'], 
-            obs_ds[sid].attrs['Longitude'],
-            obs_ds[sid].attrs['Height_of_station_above_mean_sea_level_in_metres'],
-            obs_ds[sid].attrs['Month_Year_site_opened'],
-            obs_ds[sid].attrs['Month_Year_site_closed'],
-            obs_ds[sid].attrs['Station_name'],
+            obs_ds[sid].attrs['latitude'], 
+            obs_ds[sid].attrs['longitude'],
+            obs_ds[sid].attrs['elevation'],
+            obs_ds[sid].attrs['state'],
+            obs_ds[sid].attrs['station_name'],
             ], name=sid)
         station_data_list.append(station_data)
 
     stations = pd.DataFrame(station_data_list)
-    stations.columns = ['lat','lon','height','opened','closed','name']
+    # stations.columns = ['lat','lon','height','opened','closed','name']
+    stations.columns = ['lat','lon','elevation','state','name']
 
     return obs, stations
+
+def get_barra_data(ds,opts,exp):
+
+    print(f'loading {exp}')
+
+    ekeys = {'BARRA-R2': 'AUS-11',
+             'BARRA-C2': 'AUST-04',
+            }
+
+    varkeys = {
+        'precipitation_amount_accumulation':'pr',
+        'total_precipitation_rate':'pr',
+        'air_temperature': 'tas',
+        'sensible_heat_flux' : 'hfss',
+        'latent_heat_flux': 'hfls',
+        'relative_humidity' : 'hurs',
+        'specific_humidity': 'huss',
+        'surface_temperature' : 'ts',
+        'soil_moisture_l1': 'mrsos',
+        'soil_moisture_l2': 'mrsol',
+        'soil_moisture_l3': 'mrsol',
+        'soil_moisture_l4': 'mrsol',
+        }
+
+    varkey = varkeys[opts['variable']]
+
+
+    if varkey == 'mrsol':
+        period = 'day'
+    else:
+        period = '1hr'
+
+    sdate,edate = pd.Timestamp(ds.time.min().values), pd.Timestamp(ds.time.max().values)
+
+    fpath = f'/g/data/ob53/BARRA2/output/reanalysis/{ekeys[exp]}/BOM/ERA5/historical/hres/{exp}/v1/{period}/{varkey}/latest/'
+    yms = sdate.strftime('%Y%m')
+    fname = f'{varkey}_{ekeys[exp]}_ERA5_historical_hres_BOM_{exp}_v1_{period}_{yms}-{yms}.nc'
+    da = xr.open_dataset(f'{fpath}/{fname}')[varkey]
+    da = da.rename({'lon':'longitude','lat':'latitude'})
+
+    # check if ds extends into next month
+    yme = edate.strftime('%Y%m')
+    if yms != yme:
+        print('loading second BARRA month')
+        fname = f'{varkey}_{ekeys[exp]}_ERA5_historical_hres_BOM_{exp}_v1_{period}_{yme}-{yme}.nc'
+        dae = xr.open_dataset(f'{fpath}/{fname}')[varkey]
+        dae = dae.rename({'lon':'longitude','lat':'latitude'})
+        da = xr.concat([da,dae],dim='time')
+
+    if opts['variable'] in ['precipitation_amount_accumulation','total_precipitation_rate']:
+        # adjust time to be at end of accumulation period
+        da['time'] = da['time'] + pd.Timedelta('30Min')
+
+    if opts['variable'] in ['air_temperature']:
+        # convert from K to C
+        da = da - 273.15
+
+    if varkey == 'mrsos':
+        da = da.expand_dims('depth')
+
+    # # select soil layer
+    # if varkey == 'mrsol':
+    #     level = int(opts['variable'][-1]) - 1
+    #     da = da.isel(depth=level)
+
+    da = da.sel(time=slice(sdate,edate))
+
+    if opts['variable'] in ['precipitation_amount_accumulation']:
+        print('converting from hourly flux to accumulation')
+        da = (da*3600.).cumsum(dim='time')
+
+    return da
 
 def get_flux_obs(variable, local_time_offset=None):
     '''
@@ -803,6 +1116,39 @@ def get_flux_obs(variable, local_time_offset=None):
     Hourly averaged sensible and latent heat flux observations converted to UTC
     Arguments:
         variable (str): e.g. 'sensible_heat_flux' or 'latent_heat_flux'
+    station data:
+    sitename,lat,lon,Surface_SM,Rootzone_SM,SSM_depths(cm),RZSM_depths(cm)
+        AliceSpringsMulga,-22.2828,133.2493,TRUE,FALSE,10,nan
+        Calperum,-34.0027,140.5877,TRUE,FALSE,10,100
+        CapeTribulation,-16.1056,145.3778,TRUE,TRUE,10,75
+        CowBay,-16.1032,145.4469,TRUE,TRUE,10,75
+        CumberlandPlain,-33.6152,150.7236,TRUE,FALSE,8,20
+        DalyPasture,-17.1507,133.3502,TRUE,TRUE,5,50
+        DalyUncleared,-14.1592,131.3881,TRUE,TRUE,5,50
+        DryRiver,-15.26,132.41,TRUE,TRUE,5,50
+        Emerald,-23.85872,148.4746,TRUE,FALSE,5,30
+        Gingin,-31.3764,115.7139,TRUE,TRUE,10,80
+        GreatWesternWoodlands,-30.1913,120.6541,TRUE,TRUE,10,110
+        HowardSprings,-12.4943,131.1523,TRUE,TRUE,10,100
+        Litchfield,-13.179,130.7945,TRUE,TRUE,5,100
+        RedDirtMelonFarm,-14.563639,132.477567,TRUE,TRUE,5,50
+        Ridgefield,-32.506102,116.966827,TRUE,TRUE,5,80
+        RiggsCreek,-36.6499,145.576,TRUE,FALSE,5,50
+        RobsonCreek,-17.1175,145.6301,TRUE,TRUE,6,75
+        Samford,-27.3881,152.877,TRUE,FALSE,5,nan
+        SturtPlains,-17.1507,133.3502,TRUE,TRUE,5,50
+        TiTreeEast,-22.287,133.64,TRUE,FALSE,10,100
+        Tumbarumba,-35.6566,148.1517,TRUE,FALSE,10,nan
+        WallabyCreek,-37.4259,145.1878,TRUE,FALSE,10,nan
+        Warra,-43.09502,146.65452,TRUE,TRUE,8,80
+        Whroo,-36.6732,145.0294,TRUE,FALSE,10,nan
+        WombatStateForest,-37.4222,144.0944,TRUE,TRUE,10,95
+        Yanco,-34.9893,146.2907,TRUE,TRUE,10,75
+    JULES soil model depths:
+        0.05,0.225,0.675,2
+    5-6cm cm surface soil moisture sites:
+        DalyPasture, DalyUncleared, DryRiver, Emerald, Litchfield, RedDirtMelonFarm,
+        Ridgefield, RiggsCreek, RobsonCreek, Samford, SturtPlains
     '''
 
     import re
@@ -812,8 +1158,8 @@ def get_flux_obs(variable, local_time_offset=None):
         'latent_heat_flux':'/g/data/ce10/Insitu-Observations/OzFlux/Fluxes/Hourly_Fe_UTC',
         'soil_moisture_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_SurfaceSM_UTC',
         'soil_moisture_l2': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_SurfaceSM_UTC',
-        # 'soil_moisutre_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_RootzoneSM_UTC',
-        # 'soil_moisture_l1': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/30min_SM_UTC',
+        'soil_moisture_l3': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_RootzoneSM_UTC',
+        # 'soil_moisture_l4': '/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/Hourly_RootzoneSM_UTC',
         }
 
     stations = pd.read_csv(f'/g/data/ce10/Insitu-Observations/OzFlux/Soil_Moisture/OzFlux_sites_info_processed.csv')
@@ -1294,7 +1640,7 @@ def get_variable_opts(variable):
     elif variable == 'dew_point_temperature':
         opts.update({
             'constraint': 'dew_point_temperature',
-            'plot_title': 'dew point_temperature (1.5 m)',
+            'plot_title': 'dew point temperature (1.5 m)',
             'plot_fname': 'dew_point_temperature_1p5m',
             'units'     : '°C',
             'obs_key'   : 'Tdp',
@@ -1615,9 +1961,9 @@ def get_variable_opts(variable):
             'plot_fname': 'toa_longwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
-            'vmin'      : 50,
-            'vmax'      : 400,
-            'cmap'      : 'Greys_r',
+            'vmin'      : 100,
+            'vmax'      : 350,
+            'cmap'      : 'Greys',
             'fmt'       : '{:.1f}',
             })
 

@@ -49,8 +49,8 @@ variables_done = [
     'surface_net_longwave_flux',
     ]
 
-problematic =['total_precipitation_rate']
-variables = ['surface_net_shortwave_flux','surface_downwelling_shortwave_flux','surface_downwelling_longwave_flux']
+problematic =['total_precipitation_rate','surface_net_shortwave_flux']
+variables = ['surface_downwelling_shortwave_flux','surface_downwelling_longwave_flux']
 
 ###############################################################################
 # dictionary of experiments
