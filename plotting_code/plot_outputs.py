@@ -50,10 +50,10 @@ variables_done = [
 
 variables = ['soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
 variables = ['dew_point_temperature']
-variables = ['latent_heat_flux']
 variables = ['specific_humidity']
 variables = ['soil_moisture_l1']
 variables = ['toa_outgoing_longwave_flux']
+variables = ['latent_heat_flux']
 variables = ['air_temperature']
 
 exps = [
@@ -62,7 +62,7 @@ exps = [
         # 'BR2_12p2_CCI',
         # ## ERA5-Land CCI ###
         # 'E5L_5_CCI',
-        'E5L_1_CCI',
+        # 'E5L_1_CCI',
         # 'E5L_1_L_CCI',
         # ### ERA5-Land CCI WordCover ###
         # 'E5L_5_CCI_WC',
@@ -70,20 +70,20 @@ exps = [
         # 'E5L_1_L_CCI_WC',
         # ### BARRA CCI ###
         # 'BR2_5_CCI',
-        'BR2_1_CCI',
-        # 'BR2_1_L_CCI',
+        # 'BR2_1_CCI',
+        'BR2_1_L_CCI',
         # ### BARRA CCI WorldCover ###
         # 'BR2_5_CCI_WC',
         # 'BR2_1_CCI_WC',
-        # 'BR2_1_L_CCI_WC',
+        'BR2_1_L_CCI_WC',
         # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
-        # 'BR2_1_L_IGBP',
+        'BR2_1_L_IGBP',
         # ### BARRA CCI no urban ###
         # 'BR2_5_CCI_no_urban',
         # 'BR2_1_CCI_no_urban',
-        # 'BR2_1_L_CCI_no_urban',
+        'BR2_1_L_CCI_no_urban',
         ### BARRA operational reanalysis ###
         # 'BARRA-R2',
         'BARRA-C2',
@@ -127,8 +127,8 @@ def main_plotting():
 def _plot_stations(ds, obs, sids, stations, opts, suffix):
 
     # # all stations
-    # fig, fname, all_stats = cf.plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, 3, suffix)
-    # fig.savefig(fname, bbox_inches='tight', dpi=200)
+    fig, fname, all_stats = cf.plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, 3, suffix)
+    fig.savefig(fname, bbox_inches='tight', dpi=200)
     # # avg stations
     fig,fname, _ = cf.plot_station_data_func_timeseries(ds, obs, sids, exps ,stations, opts, 'mean', suffix)
     fig.savefig(fname,bbox_inches='tight',dpi=200)
@@ -339,7 +339,7 @@ def create_spatial_timeseries_plot(suffix='', itime=0,  masked=False):
 
     return fig, fname
 
-def create_spatial_timeseries_plot_vs_obs(suffix='', itime=0, masked=True):
+def create_spatial_timeseries_plot_vs_obs(suffix='', itime=0, masked=False):
 
     lsm_opts = cf.get_variable_opts('land_sea_mask')
     lsm_ds = open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask')
@@ -372,8 +372,8 @@ def create_spatial_timeseries_plot_vs_obs(suffix='', itime=0, masked=True):
             )
         elif variable in ['air_temperature']:
             vopts = cf.update_opts(opts,
-                vmin=15,
-                vmax=35,
+                vmin=18,
+                vmax=26,
                 cmap='Spectral_r',
             )
         elif variable in ['dew_point_temperature']:
@@ -393,8 +393,8 @@ def create_spatial_timeseries_plot_vs_obs(suffix='', itime=0, masked=True):
             )
         elif variable in ['air_temperature']:
             vopts = cf.update_opts(opts,
-                vmin=10,
-                vmax=45,
+                vmin=15,
+                vmax=42,
                 cmap='Spectral_r',
             )
         elif variable in ['dew_point_temperature']:
@@ -409,7 +409,7 @@ def create_spatial_timeseries_plot_vs_obs(suffix='', itime=0, masked=True):
 
     ########## plot ##########
 
-    fig, fname = cf.plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=False, fill_size=10,
+    fig, fname = cf.plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=True, fill_size=10,
         fill_obs=True, ncols=len(exps), distance=100, suffix=suffix)
 
     fname = fname.split('.png')[0] + '_vs_obs.png'
@@ -757,12 +757,12 @@ if __name__ == "__main__":
         # fig, fname = create_spatial_timeseries_plot(suffix='_5km', itime=None)
         # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
 
-        fig, fname = create_spatial_timeseries_plot_vs_obs(suffix='_1km', itime=None)
-        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-        # plt.savefig(f'{plotpath}/diurnal_{variable}_12km.png', bbox_inches='tight', dpi=200)
+        # fig, fname = create_spatial_timeseries_plot_vs_obs(suffix='_1km', itime=None)
+        # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
+        # plt.savefig(f'{plotpath}/diurnal_{variable}_1km_SY.png', bbox_inches='tight', dpi=200)
 
         # timeseries_plot_vs_obs animation
-        # create_spatial_timeseries_plots(ds.time.values[:48], suffix='_1km', plot_vs_obs=True)
+        # create_spatial_timeseries_plots(ds.time.values, suffix='_1km', plot_vs_obs=True)
 
         # _plot_stations(ds, obs, sids, stations, opts, suffix='_12km')
     

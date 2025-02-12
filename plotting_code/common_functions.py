@@ -728,7 +728,7 @@ def plot_station_data_avg_timeseries(ds,obs,sids,exps,stations,opts,suffix=''):
     plt.close('all')
     fig,ax = plt.subplots(nrows=1,ncols=1,figsize=(figwidth,4))
 
-    o.mean(axis=1).plot(ax=ax,color='k',lw=0.5,marker='',
+    o.mean(axis=1).plot(ax=ax,color='k',lw=lw,marker='',
                         label='AWS observations (mean)',zorder=10)
 
     for exp in exps:
