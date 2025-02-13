@@ -100,7 +100,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
             #     for sid in sids:
             #         lat,lon = stations.loc[sid,'lat'],stations.loc[sid,'lon']
             #         obs_to_pass[sid] = dss[exp].sel(latitude=lat,longitude=lon,method='nearest').to_pandas() - obs_to_pass[sid]
-            ov = print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
+            print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
 
         # print mean spatial value on plot
         if show_mean:
@@ -153,7 +153,6 @@ def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
             try:
                 obs_val = obs_to_pass[sid]
                 if isinstance(obs_val,pd.Series):
-                    print(f'WARNING: collapsing observed values b/w {stime} and {etime}')
                     obs_val = obs_val.mean()
                 if np.isnan(obs_val):
                     ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
@@ -174,7 +173,7 @@ def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
         else:
             ax.plot(lon,lat,marker='.',mfc='None',mec='k',ms=2,mew=0.5)
 
-    return obs_val
+    return
 
 def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
                       cbar_loc='right',slabels=False,
@@ -257,13 +256,14 @@ def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
 
     # station labels and values
     if len(sids) > 0:
-        if dss.time.size == 1:
-            print('plotting observation timestep')
-            print_station_labels(ax,im,obs,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size)
-        elif dss.time.size > 1:
-            print('calculating mean of observations')
-            print_mean_station_labels(ax,im,da,obs,sids,stations,time_start,time_end,opts['obs_key'],slabels,fill_obs,fill_size,
-                                print_diff=False,print_val=True)
+        print_station_labels(ax,im,obs,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size,fill_diff,diff_vals)
+        # if dss.time.size == 1:
+        #     print('plotting observation timestep')
+        #     print_station_labels(ax,im,obs,sids,stations,stime,etime,opts,slabels,fill_obs,fill_size)
+        # elif dss.time.size > 1:
+        #     print('calculating mean of observations')
+        #     print_mean_station_labels(ax,im,da,obs,sids,stations,time_start,time_end,opts['obs_key'],slabels,fill_obs,fill_size,
+        #                         print_diff=False,print_val=True)
 
     # set colorbar
     cbar = custom_cbar(ax,im,cbar_loc)
@@ -898,7 +898,7 @@ def plot_station_data_bias_timeseries(ds,obs,sids,exps,stations,opts,suffix,resa
 
 def calc_all_stats(ds, obs, sids, exps, stations, opts):
 
-    all_stats = pd.DataFrame()
+    all_stats_list = []
 
     for sid in sids:
         stats = pd.DataFrame()
@@ -920,7 +920,8 @@ def calc_all_stats(ds, obs, sids, exps, stations, opts):
                 within_threshold,sim_within = calc_percent_within_threshold(s,o,opts['threshold'])
                 stats.loc['threshold',exp] = within_threshold
     
-        all_stats[sid] = stats.unstack()
+        all_stats_list.append(stats.unstack())
+    all_stats = pd.concat(all_stats_list,axis=1)
 
     return all_stats
 
@@ -1548,6 +1549,58 @@ def trim_sids(ds, obs, sids, stations):
 
     return sids
 
+def open_output_netcdf(exps,opts,variable,datapath):
+    """
+    Open the netcdf files for the experiments and variable
+
+    Args:
+    exps: list of experiments
+    variable: variable to open
+    
+    """
+
+    print(f'attempting to open {len(exps)} experiments:')
+    print(exps)
+   
+    ds = xr.Dataset()
+    for i,exp in enumerate(exps):
+
+        fname = f'{datapath}/{opts["plot_fname"]}/{exp}_{opts["plot_fname"]}.nc'
+        print(f'{i+1}: checking {fname}')
+        if os.path.exists(fname):
+            print(f'  opening {variable} {exp}')
+            try:
+                try:
+                    da = xr.open_dataset(fname)[opts['constraint']]
+                except:
+                    da = xr.open_dataset(fname)[variable]
+                if i==0:
+                    template_exp = exp
+                    ds[exp] = da
+                else:
+                    # check if the coordinates match with the template_exp
+                    if (da.longitude.equals(ds[template_exp].longitude) and da.latitude.equals(ds[template_exp].latitude)):
+                        ds[exp] = da
+                    else:
+                        print(f'  regridding to {template_exp}')
+                        ds[exp] = da.interp_like(ds[template_exp], method='nearest')
+
+            except Exception as e:
+                print(f'failed to open {fname} {e}')
+                print(f'removing {exp} from exps')
+                exps.remove(exp)
+        elif 'BARRA' in exp:
+            da = get_barra_data(ds,opts,exp)
+            ds[exp] = da.interp_like(ds[template_exp], method='nearest')
+
+        else:
+            print('no file found')
+
+    # update the ds timezone attribute as "UTC"
+    ds.time.attrs.update({'timezone':'UTC'})
+
+    return ds
+
 def get_variable_opts(variable):
     '''standard variable options for plotting. to be updated within master script as needed'''
 
@@ -1868,7 +1921,7 @@ def get_variable_opts(variable):
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 88000,
             'vmax'      : 104000,
-            'cmap'      : 'turbo_r',
+            'cmap'      : 'viridis',
             })
 
     elif variable == 'soil_temperature_l1':
@@ -2071,9 +2124,9 @@ def get_variable_opts(variable):
             'units'     : 'Pa',
             'obs_key'   : 'SLP',
             'fname'     : 'umnsaa_pverb',
-            'vmin'      : 96000,
-            'vmax'      : 104000,
-            'cmap'      : 'turbo_r',
+            'vmin'      : 97000,
+            'vmax'      : 103000,
+            'cmap'      : 'viridis',
             'fmt'       : '{:.1f}',
             })
         
