@@ -296,10 +296,22 @@ A [script in this repository](plotting_code/um_to_netcdf.py) loads pre-processed
 
 # Analysis
 
-To do:
-- analyse impact of initialisation (ERA5-Land or BARRA-R2) and make recommendations
-- analyse impact of resolution and domain size (5km, 1km, 1km large)
-- analyse impact of different urban land cover (CCI, IGBP, WorldCover, no urban)
+## impact of initialisation (ERA5-Land or BARRA-R2) and make recommendations (Mathew Lipson)
+ - BARRA-R2 is a system native to the RNS (i.e. UM+JULES), expectation that it is more appropriate
+ - ERA5-land is initialised wetter than BARRA-R2, with wetness persisting in top layer throughout the month
+ - results in ~ 0.5 °C lower daytime maximum temperature
+ - analysis notebook here: https://github.com/21centuryweather/RNS_Sydney_1km/blob/main/plotting_code/nb_initial_evaluation.ipynb
+ - presentation here (for NRI Atmosphere WG): https://unsw-my.sharepoint.com/:p:/g/personal/z9901702_ad_unsw_edu_au/EVD5yMLs8DxIlBczslBu_oAB6rVGUdjrxqBAM9F2XBLxbQ?e=zsppuQ
+
+# boundary effects (Andrew Brown)
+ - analysis notebook here: https://github.com/21centuryweather/RNS_Sydney_1km/blob/main/plotting_code/boundary_effects.ipynb
+
+## impact of different urban land cover (Mathew Lipson)
+ - compare CCI, CCI+WorldCover, IGBP, no urban, BARRA reanalysis
+ - analysis notebook here: https://github.com/21centuryweather/RNS_Sydney_1km/blob/main/plotting_code/nb_urban.ipynb
+ 
+Analysis to do: 
+## impact of resolution and domain size (5km, 1km, 1km large)
 
 # Next Steps
 
