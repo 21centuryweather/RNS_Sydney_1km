@@ -760,8 +760,10 @@ def plot_station_data_avg_timeseries(ds,obs,sids,exps,stations,opts,suffix=''):
     # loc = 'lower left' if constraint in ['soil_temperature','specific_humidity','relative_humidity'] else 'upper left'
     # ax.legend(leg.values(),leg.keys(),loc=loc,fontsize=8,framealpha=1)
 
+    ncol = len(exps)+1
+    ncol = ncol if ncol < 4 else ncol//2
     fig.legend(leg.values(),leg.keys(),loc='lower center',bbox_to_anchor=(0.5, -0.03),
-            fontsize=8,ncol=len(exps)+1,framealpha=1)
+            fontsize=8,ncol=ncol,framealpha=1)
 
     if len(sids)==1:
         title_str = f"{opts['plot_title'].capitalize()} [{opts['units']}]: {stations.loc[sid]['name']}"
