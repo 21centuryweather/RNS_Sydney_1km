@@ -54,8 +54,8 @@ variables = ['specific_humidity']
 variables = ['soil_moisture_l1']
 variables = ['toa_outgoing_longwave_flux']
 variables = ['latent_heat_flux']
-variables = ['air_temperature']
 variables = ['air_pressure_at_sea_level']
+variables = ['air_temperature']
 
 exps = [
         ### Parent models ###
@@ -70,7 +70,7 @@ exps = [
         # 'E5L_1_CCI_WC',
         # 'E5L_1_L_CCI_WC',
         # ### BARRA CCI ###
-        # 'BR2_5_CCI',
+        'BR2_5_CCI',
         # 'BR2_1_CCI',
         # 'BR2_1_L_CCI',
         # ### BARRA CCI WorldCover ###
@@ -87,7 +87,7 @@ exps = [
         # 'BR2_1_L_CCI_no_urban',
         ### BARRA operational reanalysis ###
         # 'BARRA-R2',
-        # 'BARRA-C2',
+        'BARRA-C2',
         ]
 
 ################## functions ##################
@@ -162,15 +162,21 @@ def _plot_stations(ds, obs, sids, stations, opts, suffix):
 
 def main_animation(suffix):
 
+    # remove all spatial png files
+    for file in glob.glob(fnamein):
+        os.remove(file)
+
+    fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
+    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
+
     vopts = cf.update_opts(opts,
                 vmin=15,
                 vmax=45,
-                cmap='Spectral_r',
+                # cmap='Spectral_r',
+                cmap='magma',
             )
 
     cf.plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=200)
-    fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
-    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
     cf.make_mp4(fnamein,fnameout,fps=48,quality=26)
 
     # # make gif
@@ -201,10 +207,10 @@ def create_soil_moisture_plots(suffix=''):
 
     return
 
-def create_spatial_timeseries_animation(ds, times, suffix='', plot_vs_obs=False, masked=True):
+def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, suffix='', plot_vs_obs=False, masked=True):
 
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
-    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
+    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}_subset"
 
     # remove all spatial png files
     for file in glob.glob(fnamein):
@@ -213,13 +219,14 @@ def create_spatial_timeseries_animation(ds, times, suffix='', plot_vs_obs=False,
     for i,time in enumerate(times):
         print(f'{i+1} of {len(times)}')
         if plot_vs_obs:
-            fig, fname = create_spatial_timeseries_plot_vs_obs(ds,suffix,i,masked)
+            fig, fname = create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
+                                                      itime=i, masked=masked, distance=100, suffix=suffix)
         else:
             fig, fname = create_spatial_timeseries_plot(ds,suffix,i,masked)
         fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
-    cf.make_mp4(fnamein,fnameout,fps=24,quality=26)
+    cf.make_mp4(fnamein,fnameout,fps=36,quality=26)
 
     # remove all spatial png files
     for file in glob.glob(fnamein):
@@ -265,12 +272,13 @@ def create_spatial_timeseries_animation(ds, times, suffix='', plot_vs_obs=False,
 
 #     return fig, fname
 
-def create_spatial_timeseries_plot(ds, suffix='', itime=0,  masked=True):
+def create_spatial_timeseries_plot(ds, exps, suffix='', itime=0,  masked=False, distance=100):
+
+    lsm_opts = cf.get_variable_opts('land_sea_mask')
+    lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
 
     if masked:
-         lsm_opts = cf.get_variable_opts('land_sea_mask')
-         lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask')
-         ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
+        ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
     else:
         ds_masked = ds.copy()
     if itime is not None:
@@ -278,62 +286,13 @@ def create_spatial_timeseries_plot(ds, suffix='', itime=0,  masked=True):
     else:
         dss_masked = ds_masked.copy()
 
-    # if itime is None:
-    #     if variable in ['latent_heat_flux','sensible_heat_flux']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=0,
-    #             vmax=400,
-    #             # cmap='inferno'
-    #         )
-    #     elif variable in ['air_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=15,
-    #             vmax=35,
-    #             cmap='Spectral_r',
-    #         )
-    #     elif variable in ['dew_point_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=5,
-    #             vmax=25,
-    #             cmap='viridis',
-    #         )
-    #     elif variable in ['specific_humidity']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=0.006,
-    #             vmax=0.016,
-    #             # cmap='viridis',
-    #         )
-    #     else:
-    #         vopts = opts.copy()
-    # else:
-    #     if variable in ['latent_heat_flux','sensible_heat_flux']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=0,
-    #             vmax=400,
-    #             # cmap='inferno'
-    #         )
-    #     elif variable in ['air_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=10,
-    #             vmax=45,
-    #             cmap='Spectral_r',
-    #         )
-    #     elif variable in ['dew_point_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=5,
-    #             vmax=25,
-    #             cmap='viridis',
-    #         )
-    #     else:
-    #         vopts = opts.copy()
-
     fig, fname = cf.plot_spatial(exps, dss_masked, vopts, [], stations, obs, slabels=False, fill_size=10,
-        fill_obs=False, ncols=len(exps), distance=100, suffix=suffix)
+        fill_obs=False, ncols=len(exps), distance=distance, suffix=suffix)
 
     # create new ax on the bottom of the current axes
     axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
     axins.set_title(f'Domain averaged {opts["plot_title"]}')
-
+    
     # calculate the spatially averaged timeseries for each experiment
     ts = ds_masked.mean(dim=['latitude','longitude'])
     ts = ts.to_dataframe()[exps]
@@ -343,6 +302,7 @@ def create_spatial_timeseries_plot(ds, suffix='', itime=0,  masked=True):
 
     # plot the timeseries
     ts_plot = ts.plot(ax=axins)
+    
     # update axins legend
     axins.legend([exp_plot_titles[exp] for exp in exps], loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
 
@@ -358,18 +318,19 @@ def create_spatial_timeseries_plot(ds, suffix='', itime=0,  masked=True):
 
     return fig, fname
 
-def create_spatial_timeseries_plot_vs_obs(ds, suffix='', itime=0, masked=True):
+def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
+                                          itime=0, masked=False, distance=100, suffix=''):
 
     lsm_opts = cf.get_variable_opts('land_sea_mask')
-    lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask')
+    lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
 
-    # only pass obs if their lat/lon is within the lsm mask (i.e. remove sites the model thinks are ocean)
-    sids_to_pass = []
-    for sid in sids:
-        lat = stations.loc[sid,'lat']
-        lon = stations.loc[sid,'lon']
-        if lsm_ds[exps[0]].isel(time=0).sel(latitude=lat,longitude=lon, method = 'nearest')==1:
-            sids_to_pass.append(sid)
+    # ensure obs match passed ds in time and space
+    # select only obs that align with ds model times
+    if not obs.empty:
+        obs = obs.loc[ds.time.values]
+
+    # trim sids to those in ds
+    sids_to_pass = cf.trim_sids(ds, obs, sids, stations)
 
     # get masked data
     if masked:
@@ -382,60 +343,17 @@ def create_spatial_timeseries_plot_vs_obs(ds, suffix='', itime=0, masked=True):
         dss_masked = ds_masked.copy()
     # dss_masked['time'] = time
 
-    # if itime is None:
-    #     if variable in ['latent_heat_flux','sensible_heat_flux']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=0,
-    #             vmax=400,
-    #             # cmap='inferno'
-    #         )
-    #     elif variable in ['air_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=None,
-    #             vmax=None,
-    #             cmap='Spectral_r',
-    #         )
-    #     elif variable in ['dew_point_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=5,
-    #             vmax=25,
-    #             cmap='viridis',
-    #         )
-    #     else:
-    #         vopts = opts.copy()
-    # else:
-    #     if variable in ['latent_heat_flux','sensible_heat_flux']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=0,
-    #             vmax=400,
-    #             # cmap='inferno'
-    #         )
-    #     elif variable in ['air_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=15,
-    #             vmax=42,
-    #             cmap='Spectral_r',
-    #         )
-    #     elif variable in ['dew_point_temperature']:
-    #         vopts = cf.update_opts(opts,
-    #             vmin=5,
-    #             vmax=25,
-    #             cmap='viridis',
-    #         )
-    #     else:
-    #         vopts = opts.copy()
-
-
     ########## plot ##########
 
     fig, fname = cf.plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=True, fill_size=10,
-        fill_obs=True, ncols=len(exps), distance=100, suffix=suffix)
+        fill_obs=True, ncols=len(exps), distance=distance, suffix=suffix)
 
     fname = fname.split('.png')[0] + '_vs_obs.png'
 
     # create new ax on the bottom of the current axes
     axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
     axins.set_title(f'Site averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
+
     # calculate the site location averaged timeseries for each experiment
 
     sim_site_list = []
@@ -716,6 +634,19 @@ if __name__ == "__main__":
         # trim sids to those in ds
         sids, suffix = cf.trim_sids(ds, obs, sids, stations), '_trimmed'
 
+        lsm_opts = cf.get_variable_opts('land_sea_mask')
+        lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
+        
+        # only pass obs if their lat/lon is within the lsm mask
+        sids_to_pass = []
+        for sid in sids:
+            lat = stations.loc[sid,'lat']
+            lon = stations.loc[sid,'lon']
+            if lsm_ds[exps[0]].isel(time=0).sel(latitude=lat,longitude=lon, method = 'nearest')==1:
+                sids_to_pass.append(sid)
+        
+        stations.loc[sids_to_pass]
+
 
         # # special sids
         # sids, suffix = ['066062','066137','070351'], '_special'
@@ -757,11 +688,11 @@ if __name__ == "__main__":
         # timeseries_plot_vs_obs animation
         times = ds.time.values
         vopts = cf.update_opts(opts,
-                    vmin=98000,
-                    vmax=103000,
-                    cmap='viridis',
+                    vmin=5,
+                    vmax=45,
+                    cmap='Spectral_r',
                 )
-        create_spatial_timeseries_animation(ds, times, suffix='_5km', plot_vs_obs=False, masked=False)
+        create_spatial_timeseries_animation(exps, ds, vopts, sids_to_pass, stations, obs, times, suffix='_5km', plot_vs_obs=True, masked=False)
 
         # _plot_stations(ds, obs, sids, stations, opts, suffix='_12km')
     

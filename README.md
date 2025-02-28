@@ -8,7 +8,7 @@
 
 # RNS_SY_1km
 
-This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. This OSTIA pre-alpha release is NOT CURRENTLY SUPPORTED by NRI, as it is being developed/tested. For more information contact Chermelle Engel.
+This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. This OSTIA pre-alpha release is NOT CURRENTLY SUPPORTED by NRI, as it is being developed/tested. For more information contact Chermelle Engel <chermelle.engel@anu.edu.au>.
 
 Most of the codebase is stored in [MOSRS](https://code.metoffice.gov.uk).
 Plotting functions and some pre-processing stored here.
@@ -140,22 +140,7 @@ The "No urban" option is a custom pre-processing script included in this reposit
 
 # To run Regional Nesting Suite
 
-```
-# log into MOSRS as above
-
-# checkout SY_1km version of ACCESS regional nesting suite
-rosie co u-dg768/rns_ostia_sydney_1km
-cd u-dg768
-
-# run with default settings (BARRA-R2 with CCI and CCI+WC)
-rose suite-run
-
-# OR run with appropriate option file overide, e.g. 
-rose suite-run -O nci_SY_1km_era5land
-
-# OR
-rose suite-run -O nci_SY_1km_IGBP_no_urban
-```
+The OSTIA-enabled RNS is not yet publicly available. Contact Chermelle Engel to discuss access <chermelle.engel@anu.edu.au>.
 
 Suite takes approximately 1 hr/ day.
 
@@ -303,7 +288,7 @@ A [script in this repository](plotting_code/um_to_netcdf.py) loads pre-processed
  - analysis notebook here: https://github.com/21centuryweather/RNS_Sydney_1km/blob/main/plotting_code/nb_initial_evaluation.ipynb
  - presentation here (for NRI Atmosphere WG): https://unsw-my.sharepoint.com/:p:/g/personal/z9901702_ad_unsw_edu_au/EVD5yMLs8DxIlBczslBu_oAB6rVGUdjrxqBAM9F2XBLxbQ?e=zsppuQ
 
-# boundary effects (Andrew Brown)
+## boundary effects (Andrew Brown)
  - analysis notebook here: https://github.com/21centuryweather/RNS_Sydney_1km/blob/main/plotting_code/boundary_effects.ipynb
 
 ## impact of different urban land cover (Mathew Lipson)
