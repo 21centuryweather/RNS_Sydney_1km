@@ -142,6 +142,20 @@ The "No urban" option is a custom pre-processing script included in this reposit
 
 The OSTIA-enabled RNS is not yet publicly available. Contact Chermelle Engel to discuss access <chermelle.engel@anu.edu.au>.
 
+If you have permission, the suite can be run with:
+
+```
+rosie co u-dg768/rns_ostia_sydney_1km
+cd u-dg768
+rose suite-run
+
+# OR run with appropriate option file overide, e.g. with ERA5land initial conditions
+rose suite-run -O nci_SY_1km_era5land
+
+# OR running IGBP and CCI_no_urban options
+rose suite-run -O nci_SY_1km_IGBP_no_urban
+```
+
 Suite takes approximately 1 hr/ day.
 
 # Outputs
