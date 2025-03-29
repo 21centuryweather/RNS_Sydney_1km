@@ -55,6 +55,7 @@ variables = ['soil_moisture_l1']
 variables = ['toa_outgoing_longwave_flux']
 variables = ['latent_heat_flux']
 variables = ['air_pressure_at_sea_level']
+variables = ['wind_speed_of_gust']
 variables = ['air_temperature']
 
 exps = [
@@ -62,32 +63,32 @@ exps = [
         # 'E5L_11p1_CCI',
         # 'BR2_12p2_CCI',
         # ## ERA5-Land CCI ###
-        'E5L_5_CCI',
+        # 'E5L_5_CCI',
         # 'E5L_1_CCI',
         # 'E5L_1_L_CCI',
         # ### ERA5-Land CCI WordCover ###
         # 'E5L_5_CCI_WC',
         # 'E5L_1_CCI_WC',
         # 'E5L_1_L_CCI_WC',
-        # ### BARRA CCI ###
-        'BR2_5_CCI',
-        # 'BR2_1_CCI',
-        # 'BR2_1_L_CCI',
-        # ### BARRA CCI WorldCover ###
-        # 'BR2_5_CCI_WC',
-        # 'BR2_1_CCI_WC',
-        # 'BR2_1_L_CCI_WC',
         # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
         # 'BR2_1_L_IGBP',
+        # ### BARRA CCI ###
+        # 'BR2_5_CCI',
+        # 'BR2_1_CCI',
+        'BR2_1_L_CCI',
+        # ### BARRA CCI WorldCover ###
+        # 'BR2_5_CCI_WC',
+        # 'BR2_1_CCI_WC',
+        # 'BR2_1_L_CCI_WC',
         # ### BARRA CCI no urban ###
         # 'BR2_5_CCI_no_urban',
         # 'BR2_1_CCI_no_urban',
         # 'BR2_1_L_CCI_no_urban',
         ### BARRA operational reanalysis ###
         # 'BARRA-R2',
-        'BARRA-C2',
+        # 'BARRA-C2',
         ]
 
 ################## functions ##################
@@ -108,7 +109,6 @@ def main_plotting():
     fig, fname = cf.plot_spatial([exp], diff, vopts, [], stations, obs, slabels=True, fill_size=10,
         fill_obs=True, ncols=len(exps), distance=100, suffix='_diff')
     fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-
 
     fig, fname = cf.plot_spatial_difference(exps[3],exps[1], ds, opts, sids, stations, obs)
 
@@ -160,34 +160,35 @@ def _plot_stations(ds, obs, sids, stations, opts, suffix):
     # all_stats['mean'] = all_stats.mean(axis=1)
     # all_stats.to_csv(f"{plotpath}/{opts['case']}_{opts['constraint']}_allstats{suffix}.csv")
 
-def main_animation(suffix):
+# def main_animation(suffix):
 
-    # remove all spatial png files
-    for file in glob.glob(fnamein):
-        os.remove(file)
+#     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
+#     fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
 
-    fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
-    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
+#     # remove all spatial png files
+#     for file in glob.glob(fnamein):
+#         print(f'removing {file}')
+#         os.remove(file)
 
-    vopts = cf.update_opts(opts,
-                vmin=15,
-                vmax=45,
-                # cmap='Spectral_r',
-                cmap='magma',
-            )
+#     vopts = cf.update_opts(opts,
+#                 vmin=0,
+#                 vmax=45,
+#                 # cmap='Spectral_r',
+#                 # cmap='magma',
+#             )
 
-    cf.plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=200)
-    cf.make_mp4(fnamein,fnameout,fps=48,quality=26)
+#     cf.plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=200)
+#     cf.make_mp4(fnamein,fnameout,fps=12,quality=26)
 
-    # # make gif
-    # command = f'convert -delay 5 -loop 0 {fnamein} {fnameout}.gif'
-    # os.system(command)
+#     # # make gif
+#     # command = f'convert -delay 5 -loop 0 {fnamein} {fnameout}.gif'
+#     # os.system(command)
     
-    # remove all spatial png files
-    for file in glob.glob(fnamein):
-        os.remove(file)
+#     # # remove all spatial png files
+#     # for file in glob.glob(fnamein):
+#     #     os.remove(file)
 
-    return
+#     return
 
 def create_soil_moisture_plots(suffix=''):
 
@@ -207,10 +208,11 @@ def create_soil_moisture_plots(suffix=''):
 
     return
 
-def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, suffix='', plot_vs_obs=False, masked=True):
+def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, 
+                                        suffix='', plot_vs_obs=False, masked=True):
 
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
-    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}_subset"
+    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
 
     # remove all spatial png files
     for file in glob.glob(fnamein):
@@ -219,18 +221,18 @@ def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, ti
     for i,time in enumerate(times):
         print(f'{i+1} of {len(times)}')
         if plot_vs_obs:
-            fig, fname = create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
+            fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, datapath,
                                                       itime=i, masked=masked, distance=100, suffix=suffix)
         else:
-            fig, fname = create_spatial_timeseries_plot(ds,suffix,i,masked)
+            fig, fname = cf.create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix, i, masked)
         fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
-    cf.make_mp4(fnamein,fnameout,fps=36,quality=26)
+    cf.make_mp4(fnamein,fnameout,fps=18,quality=26)
 
-    # remove all spatial png files
-    for file in glob.glob(fnamein):
-        os.remove(file)
+    # # remove all spatial png files
+    # for file in glob.glob(fnamein):
+    #     os.remove(file)
 
     return
 
@@ -513,27 +515,27 @@ def set_up_plot_attrs(exps, plotpath):
 
     exp_plot_titles = {
         'ACCESS-G'       : 'ACCESS-G3 Global',
-        'E5L_11p1_CCI'   : 'ERA5-Land 11.1km (CCI)',
-        'E5L_5_CCI'      : 'ERA5-Land 5km (CCI)',
-        'E5L_1_CCI'      : 'ERA5-Land 1km (CCI)',
-        'E5L_1_L_CCI'    : 'ERA5-Land 1km (CCI large domain)',
+        'E5L_11p1_CCI'   : 'RNS 11.1km (ERA5-Land, CCI)',
+        'E5L_5_CCI'      : 'RNS 5km (ERA5-Land, CCI)',
+        'E5L_1_CCI'      : 'RNS 1km (ERA5-Land, CCI)',
+        'E5L_1_L_CCI'    : 'RNS 1km (ERA5-Land, CCI large domain)',
 
-        'BR2_12p2_CCI'   : 'BARRA-R2 12.2km (CCI)',
-        'BR2_5_CCI'      : 'BARRA-R2 5km (CCI)',
-        'BR2_1_CCI'      : 'BARRA-R2 1km (CCI)',
-        'BR2_1_L_CCI'    : 'BARRA-R2 1km (CCI large domain)',
+        'BR2_12p2_CCI'   : 'RNS 12.2km (BARRA-R2, CCI)',
+        'BR2_5_CCI'      : 'RNS 5km (BARRA-R2, CCI)',
+        'BR2_1_CCI'      : 'RNS 1km (BARRA-R2, CCI)',
+        'BR2_1_L_CCI'    : 'RNS 1km (BARRA-R2, CCI large domain)',
 
-        'BR2_5_CCI_WC'   : 'BARRA-R2 5km (CCI+WorldCover)',
-        'BR2_1_CCI_WC'   : 'BARRA-R2 1km (CCI+WorldCover)',
-        'BR2_1_L_CCI_WC' : 'BARRA-R2 1km (CCI+WorldCover large domain)',
+        'BR2_5_CCI_WC'   : 'RNS 5km (BARRA-R2, CCI+WorldCover)',
+        'BR2_1_CCI_WC'   : 'RNS 1km (BARRA-R2, CCI+WorldCover)',
+        'BR2_1_L_CCI_WC' : 'RNS 1km (BARRA-R2, CCI+WorldCover large domain)',
 
-        'BR2_5_IGBP'     : 'BARRA-R2 5km (IGBP)',
-        'BR2_1_IGBP'     : 'BARRA-R2 1km (IGBP)',
-        'BR2_1_L_IGBP'   : 'BARRA-R2 1km (IGBP large domain)',
+        'BR2_5_IGBP'     : 'RNS 5km (BARRA-R2, IGBP)',
+        'BR2_1_IGBP'     : 'RNS 1km (BARRA-R2, IGBP)',
+        'BR2_1_L_IGBP'   : 'RNS 1km (BARRA-R2, IGBP large domain)',
 
-        'BR2_5_CCI_no_urban' : 'BARRA-R2 5km (CCI no urban)',
-        'BR2_1_CCI_no_urban' : 'BARRA-R2 1km (CCI no urban)',
-        'BR2_1_L_CCI_no_urban' : 'BARRA-R2 1km (CCI no urban large domain)',
+        'BR2_5_CCI_no_urban' : 'RNS 5km (BARRA-R2, CCI no urban)',
+        'BR2_1_CCI_no_urban' : 'RNS 1km (BARRA-R2, CCI no urban)',
+        'BR2_1_L_CCI_no_urban' : 'RNS 1km (BARRA-R2, CCI no urban large domain)',
 
         'BARRA-R2'       : 'BARRA-R2 12.2km (reanalysis product)',
         'BARRA-C2'       : 'BARRA-C2 4.4km (reanalysis product)',
@@ -609,7 +611,7 @@ if __name__ == "__main__":
             # print('getting flux obs')
             obs, stations = cf.get_flux_obs(variable, local_time_offset=None)
             print('no obs available')
-        elif variable in ['air_temperature','dew_point_temperature']:
+        elif variable in ['air_temperature','dew_point_temperature','wind_speed_of_gust']:
             obs, stations = cf.process_station_netcdf(variable, stationpath, local_time_offset=local_time_offset)
         else:
             print('no obs available')
@@ -647,6 +649,10 @@ if __name__ == "__main__":
         
         stations.loc[sids_to_pass]
 
+        # exlude sids to pass if they have less than 95% data in obs
+        for sid in sids_to_pass:
+            if obs[sid].count() < 0.95*len(obs):
+                sids_to_pass.remove(sid)
 
         # # special sids
         # sids, suffix = ['066062','066137','070351'], '_special'
@@ -681,18 +687,16 @@ if __name__ == "__main__":
         # dss = ds.sel(time=ds.time.dt.hour.isin(range(shour,ehour)))
        
 
-        # fig, fname = create_spatial_timeseries_plot_vs_obs(ds.sel(time=ds.time.dt.hour==19), suffix='_1km_urban', itime=None)
-        # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-        # plt.savefig(f'{plotpath}/diurnal_{variable}_1km_urban.png', bbox_inches='tight', dpi=200)
-
         # timeseries_plot_vs_obs animation
         times = ds.time.values
         vopts = cf.update_opts(opts,
-                    vmin=5,
-                    vmax=45,
+                    vmin=15,
+                    vmax=42,
                     cmap='Spectral_r',
                 )
-        create_spatial_timeseries_animation(exps, ds, vopts, sids_to_pass, stations, obs, times, suffix='_5km', plot_vs_obs=True, masked=False)
+        # ds_subset = ds.sel(latitude=slice(-35.4,-32.4), longitude=slice(149.4,153))
+        create_spatial_timeseries_animation(exps, ds, vopts, sids_to_pass, stations, obs, times,
+                                            suffix='_1km_inferno', plot_vs_obs=True, masked=False)
 
         # _plot_stations(ds, obs, sids, stations, opts, suffix='_12km')
     

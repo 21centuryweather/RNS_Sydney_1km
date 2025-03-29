@@ -37,6 +37,7 @@ cylc_id = 'rns_ostia'
 variables_done = [
     'land_sea_mask','air_temperature','surface_temperature','relative_humidity',
     'latent_heat_flux','sensible_heat_flux','air_pressure_at_sea_level',
+    'surface_downwelling_shortwave_flux','surface_downwelling_longwave_flux',
     'dew_point_temperature', 'surface_net_downward_longwave_flux','wind_u','wind_v',
     'specific_humidity','specific_humidity_lowest_atmos_level','wind_speed_of_gust',
     'soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4',
@@ -46,11 +47,11 @@ variables_done = [
     'fog_area_fraction','visibility','cloud_area_fraction',
     'stratiform_rainfall_amount','stratiform_rainfall_flux',
     'toa_outgoing_shortwave_flux','toa_outgoing_shortwave_flux_corrected','toa_outgoing_longwave_flux',
-    'surface_net_longwave_flux',
+    'surface_net_longwave_flux', 'surface_net_shortwave_flux','ground_heat_flux', 'surface_altitude'
     ]
 
-problematic =['total_precipitation_rate','surface_net_shortwave_flux']
-variables = ['surface_downwelling_shortwave_flux','surface_downwelling_longwave_flux']
+problematic =['total_precipitation_rate']
+variables = ['surface_net_shortwave_flux']
 
 ###############################################################################
 # dictionary of experiments
@@ -111,7 +112,7 @@ def get_um_data(exp,opts):
             return None
 
         # fix time dimension name if needed
-        if 'time' not in da.dims:
+        if ('time' not in da.dims) and (variable not in ['land_sea_mask','surface_altitude']):
             print('WARNING: updating time dimension name from dim_0')
             da = da.swap_dims({'dim_0': 'time'})
 

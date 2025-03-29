@@ -423,6 +423,134 @@ def update_opts(opts,**kwargs):
     zopts.update(kwargs)
     return zopts
 
+def create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix='', itime=0,  masked=False, distance=100):
+
+    if masked:
+        lsm_opts = get_variable_opts('land_sea_mask')
+        lsm_ds = open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
+        ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
+    else:
+        ds_masked = ds.copy()
+    if itime is not None:
+        dss_masked = ds_masked.isel(time=itime)
+    else:
+        dss_masked = ds_masked.copy()
+
+    fig, fname = plot_spatial(exps, dss_masked, vopts, [], stations, obs, slabels=False, fill_size=10,
+        fill_obs=False, ncols=len(exps), distance=distance, suffix=suffix)
+
+    # create new ax on the bottom of the current axes
+    axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
+    axins.set_title(f'Domain averaged {vopts["plot_title"]}')
+    
+    # calculate the spatially averaged timeseries for each experiment
+    ts = ds_masked.mean(dim=['latitude','longitude'])
+    ts = ts.to_dataframe()[exps]
+    # if ts has multiindex, drop the second index
+    if isinstance(ts.index, pd.MultiIndex):
+        ts.index = ts.index.droplevel(1)
+
+    # plot the timeseries
+    ts_plot = ts.plot(ax=axins)
+    
+    # update axins legend
+    axins.legend([exp_plot_titles[exp] for exp in exps], loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
+
+    # get xticks and labels
+    xticks = axins.get_xticks()
+
+    if itime is not None:
+        for i,exp in enumerate(exps):
+            # get colour from ts_plot
+            exp_col = ts_plot.get_lines()[i].get_color()
+            # add point for current time on timeseries for each experiment
+            axins.scatter(ts.index[itime], ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+
+    return fig, fname
+
+def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, datapath,
+                                          itime=0, masked=False, distance=100, suffix=''):
+
+    # ensure obs match passed ds in time and space
+    # select only obs that align with ds model times
+    if not obs.empty:
+        obs = obs.loc[ds.time.values]
+
+    # trim sids to those in ds
+    sids_to_pass = trim_sids(ds, obs, sids, stations)
+
+    # get masked data
+    if masked:
+        lsm_opts = get_variable_opts('land_sea_mask')
+        lsm_ds = open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
+        ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
+    else:
+        ds_masked = ds.copy()
+    if itime is not None:
+        dss_masked = ds_masked.isel(time=itime)
+    else:
+        dss_masked = ds_masked.copy()
+    # dss_masked['time'] = time
+
+    ########## plot ##########
+
+    fig, fname = plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=True, fill_size=10,
+        fill_obs=True, ncols=len(exps), distance=distance, suffix=suffix)
+
+    fname = fname.split('.png')[0] + '_vs_obs.png'
+
+    # create new ax on the bottom of the current axes
+    axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
+    axins.set_title(f'Site averaged {vopts["plot_title"]}: {len(sids_to_pass)} sites')
+
+    # calculate the site location averaged timeseries for each experiment
+
+    sim_site_list = []
+    for sid in sids_to_pass:
+        lat = stations.loc[sid,'lat']
+        lon = stations.loc[sid,'lon']
+        sim_site = ds_masked.sel(latitude=lat,longitude=lon, method='nearest').to_dataframe()[exps]
+        sim_site_list.append(sim_site)
+    # combine sim_site_list and calculate average for each experiment
+    sim_ts = pd.concat(sim_site_list).groupby(level=0).mean()
+
+    # plot the timeseries
+    ts_plot = sim_ts.plot(ax=axins)
+    axins.set_ylabel(vopts['units'])
+
+    # now plot the site observation average
+    obs_ts = obs[sids_to_pass].mean(axis=1)
+    obs_ts.name = 'observations'
+    obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
+
+    if itime is not None:
+        for i,exp in enumerate(exps):
+            # get colour from ts_plot
+            exp_col = ts_plot.get_lines()[i].get_color()
+            # add point for current time on timeseries for each experiment
+            axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+            # add point for observations
+            axins.scatter(sim_ts.index[itime], obs_ts.iloc[itime], color='black', s=20, clip_on=False)
+
+    # get legend handles and labels
+    handles, labels = axins.get_legend_handles_labels()
+    # add MAE and BIAS to labels in exp
+    for exp in exps:
+        mae = calc_MAE(sim_ts[exp], obs_ts)
+        mbe = calc_MBE(sim_ts[exp], obs_ts)
+        labels[exps.index(exp)] = f'{exp_plot_titles[exp]}    MAE: {mae:.2f}, MBE: {mbe:.2f}]'
+    axins.legend(handles, labels, loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
+
+    # #### diurnal plot ####
+    # if itime is None:
+    #     df = pd.concat([sim_ts, obs_ts], axis=1)
+    #     df_diurnal = df.groupby(df.index.hour).mean()
+    #     # plot with observations column in black
+    #     df_diurnal.plot(color=[exp_colours[exp] for exp in exps]+['black'])
+    #     plt.title(f'Diurnally averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
+
+    return fig, fname
+
 ###### timeseries plots ######
 
 def plot_all_station_timeseries(ds, obs, sids, exps, stations, opts, ncols=3, suffix=''):
@@ -977,45 +1105,8 @@ def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None
         print(f'opening {fname}')
         obs_ds = xr.open_dataset(fname)
 
-    # else:    # previous processing
-        # variable_map = {
-        #     'air_temperature' : 'Temperature',
-        #     'dew_point_temperature' : 'dew_point_temperature',
-        #     }
-    #     # get list of files and variable name
-    #     obs_var = variable_map[variable]
-    #     fnames = glob.glob(f'{stationpath}/*.nc')
-
-    #     da_list = []
-
-    #     for i, fname in enumerate(fnames):
-    #         print(f'{i}/{len(fnames)}: {fname}')
-    #         station_obs = xr.open_dataset(fname)
-    #         # rename Time to time
-    #         station_obs = station_obs.rename({'Time':'time'})
-    #         if obs_var in station_obs.data_vars:
-    #             print(f'  found {variable}')
-    #             da = station_obs[obs_var].sel(time=slice(sdate, edate))
-    #             da.attrs.update(station_obs.attrs)
-    #             da.name = da.attrs['Station_number']
-    #             da_list.append(da)
-
-    #     print('merging station data into one dataset')
-    #     obs_ds = xr.merge(da_list)
-    #     obs_ds.attrs = {}
-
-    #     # set time dtype encoding to normal integer
-    #     obs_ds.time.encoding.update({'dtype':'int32'})
-
-    #     # set all data_vars to float32
-    #     for var in obs_ds.data_vars:
-    #         obs_ds[var].encoding.update({'dtype':'float32'})
-
-    #     # chunk for optimising timeseries
-    #     obs_ds = obs_ds.chunk({'time': -1})
-
-    #     # save to netcdf
-    #     obs_ds.to_netcdf(fname)
+    else:
+        print('pre-processing done in /g/data/ce10/users/mjl561/observations/AWS/au-2000_2024_5min/convert_to_netcdf.py')
 
     # convert to dataframe
     obs = obs_ds.to_dataframe()
@@ -1061,6 +1152,7 @@ def get_barra_data(ds,opts,exp):
         'soil_moisture_l2': 'mrsol',
         'soil_moisture_l3': 'mrsol',
         'soil_moisture_l4': 'mrsol',
+        'wind_speed_of_gust': 'wsgs',
         }
 
     varkey = varkeys[opts['variable']]
@@ -1317,6 +1409,7 @@ def get_tidy_aws_map(reversed=False):
        'Average wind speed in last 10 minutes in m/s where observations count >= 4': 'Wind_10min',
        'Highest wind speed in last 10 minutes in m/s where observations count >= 4': 'Wind_10min_max',
        'Highest maximum 3 sec wind gust in last 10 minutes in m/s where observations count >= 4'    : 'Wind_gust',
+       'Highest maximum 3 sec wind gust in last 5 minutes in km/h where observations count >= 2'    : 'wind_speed_of_gust',
        'Average direction of wind in last 10 minutes in degrees true where observations count >= 4' : 'wdir',
        'Visibility (automatic - 10 minute data mean) in km'     : 'visibility',
        'Station level pressure in hPa': 'PSurf'
@@ -1792,6 +1885,17 @@ def get_variable_opts(variable):
             'fmt'       : '{:.1f}',
             })
 
+    elif variable == 'ground_heat_flux':
+        opts.update({
+            'constraint': 'm01s03i202',
+            'units'     : 'W/m2',
+            'fname'     : 'umnsaa_psurfa',
+            'vmin'      : -100, 
+            'vmax'      : 600,
+            'cmap'      : 'turbo_r',
+            'fmt'       : '{:.1f}',
+            })
+
     elif variable == 'surface_net_longwave_flux':
         opts.update({
             'constraint': 'surface_net_downward_longwave_flux',
@@ -1807,7 +1911,7 @@ def get_variable_opts(variable):
 
     elif variable == 'surface_net_shortwave_flux':
         opts.update({
-            'constraint': 'surface_net_downward_shortwave_flux',
+            'constraint': 'm01s01i202',
             'plot_title': 'surface net shortwave flux',
             'plot_fname': 'surface_net_shortwave_flux',
             'units'     : 'W m-2',
@@ -2044,7 +2148,7 @@ def get_variable_opts(variable):
             'obs_key'   : 'Wind_gust',
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 10,
-            'vmax'      : 50,
+            'vmax'      : 40,
             'cmap'      : 'turbo',
             'fmt'       : '{:.2f}',
             })

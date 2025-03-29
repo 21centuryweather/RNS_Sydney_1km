@@ -66,18 +66,17 @@ Likewise all BARRA-R2 initialised experiments use 12.2 km grid with CCI land cov
 
 ## Compute
 
-Approximate values:
+Approximate fcst cost:
 
-|               | y_npts | x_npts | nproc | CPUS | SU 24hrs | walltime 24hrs |
+|               | y_npts | x_npts | nproc | CPUS | SU/24hrs | walltime/24hrs |
 |---------------|--------|--------|-------|------|----------|----------------|
-| ec_recon      | 340    | 420    | 12x16 | 192  | 192      | 1 min          |
-| SY_11p1/12p2  | 320    | 400    | 12x16 | 192  | 60       | 10 mins        |
-| SY_5          | 320    | 400    | 12x16 | 192  | 110      | 18 mins        |
-| SY_1          | 360    | 450    | 18x16 | 288  | 450      | 36 mins        |
+| SY_11p1/12p2  | 320    | 400    | 16x18 | 288  | 60       | 6 mins         |
+| SY_5          | 320    | 400    | 16x18 | 288  | 110      | 12 mins        |
+| SY_1          | 360    | 450    | 16x24 | 384  | 350      | 28 mins        |
 | SY_1_L        | 720    | 960    | 32x36 | 1152 | 1700     | 45 mins        |
 |               |        |        |       |      |          |                |
-| Total (small) |        |        |       |      | 740      | SU             |
-| Total (large) |        |        |       |      | 1990     | SU             |
+| Total (small) |        |        |       |      | 740 SU   | 45 min total   |
+| Total (large) |        |        |       |      | 1990 SU  | ?? min total   |
 
 
 # Ancillaries
@@ -176,18 +175,18 @@ and all single step outputs (VTS0 and VTS1) have been removed (not necessary in 
 | 3  | 00025_08c67fdc | BOUNDARY LAYER DEPTH AFTER TIMESTEP  | 0    | 25   | m01s00i025 | VT3HR    | VERDIAGS1 | instant. |        | 3 hour |           | 00025      |
 | 4  | 00031_9f4e1b5a | FRAC OF SEA ICE IN SEA AFTER TSTEP   | 0    | 31   | m01s00i031 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 00031      |
 | 5  | 00409_4dd83478 | SURFACE PRESSURE AFTER TIMESTEP      | 0    | 409  | m01s00i409 | VT3HR    | VERDIAGS1 | instant. |        | 3 hour |           | 00409      |
-| 6  | 01202_8d02003e | NET DOWN SURFACE SW FLUX : CORRECTED | 1    | 202  | m01s01i202 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01202      |
+| ~~6~~  | ~~01202_8d02003e~~ | ~~NET DOWN SURFACE SW FLUX : CORRECTED~~ | 1    | 202  | m01s01i202 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01202      |
 | 7  | 01205_651c562e | OUTGOING SW RAD FLUX (TOA):CORRECTED | 1    | 205  | m01s01i205 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01205      |
 | 8  | 01207_7d9bde37 | INCOMING SW RAD FLUX (TOA): ALL TSS  | 1    | 207  | m01s01i207 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01207      |
 | 9  | 01208_ec154294 | OUTGOING SW RAD FLUX (TOA)           | 1    | 208  | m01s01i208 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01208      |
-| 10 | 01235_85923c51 | TOTAL DOWNWARD SURFACE SW FLUX       | 1    | 235  | m01s01i235 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01235      |
-| 11 | 02201_50cdea4c | NET DOWN SURFACE LW RAD FLUX         | 2    | 201  | m01s02i201 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 02201      |
+| ~~10~~ | ~~01235_85923c51~~ | ~~TOTAL DOWNWARD SURFACE SW FLUX~~       | 1    | 235  | m01s01i235 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 01235      |
+| ~~11~~ | ~~02201_50cdea4c~~ | ~~NET DOWN SURFACE LW RAD FLUX~~         | 2    | 201  | m01s02i201 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 02201      |
 | 12 | 02205_1a540971 | OUTGOING LW RAD FLUX (TOA)           | 2    | 205  | m01s02i205 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 02205      |
-| 13 | 02207_8b3500ea | DOWNWARD LW RAD FLUX: SURFACE        | 2    | 207  | m01s02i207 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 02207      |
-| 14 | 03217_f358020f | SURFACE SENSIBLE HEAT FLUX W/M2      | 3    | 217  | m01s03i217 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03217      |
+| ~~13~~ | ~~02207_8b3500ea~~ | ~~DOWNWARD LW RAD FLUX: SURFACE~~        | 2    | 207  | m01s02i207 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 02207      |
+| ~~14~~ | ~~03217_f358020f~~ | ~~SURFACE SENSIBLE HEAT FLUX W/M2~~      | 3    | 217  | m01s03i217 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03217      |
 | 15 | 03225_a3d43c5a | 10 METRE WIND U-COMP B GRID          | 3    | 225  | m01s03i225 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03225      |
 | 16 | 03226_5d3eca37 | 10 METRE WIND V-COMP B GRID          | 3    | 226  | m01s03i226 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03226      |
-| 17 | 03234_4a6fa10f | SURFACE LATENT HEAT FLUX W/M2        | 3    | 234  | m01s03i234 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03234      |
+| ~~17~~ | ~~03234_4a6fa10f~~ | ~~SURFACE LATENT HEAT FLUX W/M2~~        | 3    | 234  | m01s03i234 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03234      |
 | 18 | 03236_11c174ad | TEMPERATURE AT 1.5M                  | 3    | 236  | m01s03i236 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03236      |
 | 19 | 03245_74998aee | RELATIVE HUMIDITY AT 1.5M            | 3    | 245  | m01s03i245 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03245      |
 | 20 | 03248_83ef074c | FOG FRACTION AT 1.5 M                | 3    | 248  | m01s03i248 | VT1HR    | VERDIAGS1 | instant. |        | hour   |           | 03248      |
