@@ -1,13 +1,15 @@
 __title__ = "Extract and reproject himawari, create animation for ACCESS-A"
-__version__ = "2023-02-22"
+__version__ = "2025-04-11"
 __author__ = "Mathew Lipson"
-__email__ = "mathew.lipson@bom.gov.au"
+__email__ = "m.lipson@unsw.edu.au"
 
 '''
 Gadi notes:
  - You need access to ra22 project and gdata storage for Himawari images
  - Use analysis3:
         module use /g/data/hh5/public/modules; module load conda/analysis3
+ - WARNING: Filenames change from HIMAWARI8 to HIMAWARI9 some time in June 2022
+   refer to satver variable
 '''
 
 import os
