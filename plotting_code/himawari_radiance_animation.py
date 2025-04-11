@@ -1,4 +1,4 @@
-__title__ = "Extract and reproject himawari, create animation for ACCESS-A"
+__title__ = "Extract and reproject himawari, create animation for custom domain"
 __version__ = "2025-04-11"
 __author__ = "Mathew Lipson"
 __email__ = "m.lipson@unsw.edu.au"
@@ -6,6 +6,7 @@ __email__ = "m.lipson@unsw.edu.au"
 '''
 Gadi notes:
  - You need access to ra22 project and gdata storage for Himawari images
+ - Update plotpath, domain and dates of interest
  - Use analysis3:
         module use /g/data/hh5/public/modules; module load conda/analysis3
  - WARNING: Filenames change from HIMAWARI8 to HIMAWARI9 some time in June 2022
@@ -147,7 +148,7 @@ def plot_sat(sat, date):
 
     return fig
 
-def make_mp4(fnamein,fnameout,fps=6,quality=26):
+def make_mp4(fnamein,fnameout,fps=12,quality=26):
     '''
     Uses ffmpeg to create mp4 with custom codec and options for maximum compatability across OS.
         fnamein (string): The image files to create animation from, with glob wildcards (*) accepted.

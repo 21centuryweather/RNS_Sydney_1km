@@ -178,7 +178,14 @@ def print_station_labels(ax,im,obs_to_pass,sids,stations,stime,etime,opts,
 def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
                       cbar_loc='right',slabels=False,
                       fill_obs=False,distance=100,fill_size=15,ncols=2,fill_diff=False,
-                      show_mean=False,suffix=''):
+                      show_mean=False,suffix='',remove_files=True,fps=12):
+
+    fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
+    fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
+    
+    # remove all spatial png files
+    for file in glob.glob(fnamein):
+        os.remove(file)
 
     for i,time in enumerate(ds.time.values):
         print(f'{i+1} of {len(ds.time)}')
@@ -189,7 +196,16 @@ def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
         fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
-    return f'completed, see: {plotpath}/{fname}'
+    # create mp4 from png files
+    make_mp4(fnamein,fnameout,fps=fps,quality=26)
+    
+    if remove_files:
+        for file in glob.glob(fnamein):
+            os.remove(file)
+
+    f'completed, see: {plotpath}/{fnameout}.mp4'
+
+    return
 
 def plot_spatial_difference(exp1,exp2,dss,opts,sids,stations,obs,
                             cbar_loc='right',cbar_levels=21,slabels=False,fill_obs=False,
@@ -423,7 +439,8 @@ def update_opts(opts,**kwargs):
     zopts.update(kwargs)
     return zopts
 
-def create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix='', itime=0,  masked=False, distance=100):
+def create_spatial_timeseries_plot(exps, ds, vopts, sids_to_pass, stations, obs, datapath,
+                                   itime=None, masked=False, distance=100, suffix=''):
 
     if masked:
         lsm_opts = get_variable_opts('land_sea_mask')
@@ -442,6 +459,11 @@ def create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix='', itime=0
     # create new ax on the bottom of the current axes
     axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
     axins.set_title(f'Domain averaged {vopts["plot_title"]}')
+
+    # # get figure size
+    # fig_width, fig_height = fig.get_size_inches()
+    # # increase fig_height by 2 inches
+    # fig.set_size_inches(fig_width, fig_height + 2)
     
     # calculate the spatially averaged timeseries for each experiment
     ts = ds_masked.mean(dim=['latitude','longitude'])
@@ -465,6 +487,9 @@ def create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix='', itime=0
             exp_col = ts_plot.get_lines()[i].get_color()
             # add point for current time on timeseries for each experiment
             axins.scatter(ts.index[itime], ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+
+    # Adjust figure layout to ensure constant edges
+    # fig.subplots_adjust(left=0.08, right=0.92, bottom=0, top=0.95, wspace=None, hspace=None)
 
     return fig, fname
 
@@ -514,23 +539,23 @@ def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
     # combine sim_site_list and calculate average for each experiment
     sim_ts = pd.concat(sim_site_list).groupby(level=0).mean()
 
+    # plot the site observation average
+    obs_ts = obs[sids_to_pass].mean(axis=1).dropna()
+    obs_ts.name = 'observations'
+    obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
+
     # plot the timeseries
     ts_plot = sim_ts.plot(ax=axins)
     axins.set_ylabel(vopts['units'])
-
-    # now plot the site observation average
-    obs_ts = obs[sids_to_pass].mean(axis=1)
-    obs_ts.name = 'observations'
-    obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
 
     if itime is not None:
         for i,exp in enumerate(exps):
             # get colour from ts_plot
             exp_col = ts_plot.get_lines()[i].get_color()
-            # add point for current time on timeseries for each experiment
-            axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
             # add point for observations
             axins.scatter(sim_ts.index[itime], obs_ts.iloc[itime], color='black', s=20, clip_on=False)
+            # add point for current time on timeseries for each experiment
+            axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
 
     # get legend handles and labels
     handles, labels = axins.get_legend_handles_labels()
@@ -1106,6 +1131,7 @@ def process_station_netcdf(variable, stationpath, sdate='2013-01-01', edate=None
         obs_ds = xr.open_dataset(fname)
 
     else:
+        print('WARNING: not netCDF file found')
         print('pre-processing done in /g/data/ce10/users/mjl561/observations/AWS/au-2000_2024_5min/convert_to_netcdf.py')
 
     # convert to dataframe
@@ -1644,7 +1670,7 @@ def trim_sids(ds, obs, sids, stations):
 
     return sids
 
-def open_output_netcdf(exps,opts,variable,datapath):
+def open_output_netcdf(exps,opts,variable,datapath,pp_to_netcdf=True):
     """
     Open the netcdf files for the experiments and variable
 
@@ -1658,38 +1684,156 @@ def open_output_netcdf(exps,opts,variable,datapath):
     print(exps)
    
     ds = xr.Dataset()
-    for i,exp in enumerate(exps):
+    for i_exp,exp in enumerate(exps):
 
         fname = f'{datapath}/{opts["plot_fname"]}/{exp}_{opts["plot_fname"]}.nc'
-        print(f'{i+1}: checking {fname}')
+        print(f'{i_exp+1}: checking {fname}')
         if os.path.exists(fname):
             print(f'  opening {variable} {exp}')
             try:
-                try:
-                    da = xr.open_dataset(fname)[opts['constraint']]
-                except:
-                    da = xr.open_dataset(fname)[variable]
-                if i==0:
-                    template_exp = exp
-                    ds[exp] = da
-                else:
-                    # check if the coordinates match with the template_exp
-                    if (da.longitude.equals(ds[template_exp].longitude) and da.latitude.equals(ds[template_exp].latitude)):
-                        ds[exp] = da
-                    else:
-                        print(f'  regridding to {template_exp}')
-                        ds[exp] = da.interp_like(ds[template_exp], method='nearest')
-
+                da = xr.open_dataset(fname)
+                da_var = list(da.keys())[0]
+                da = da[da_var]
+                if da_var != variable:
+                    print(f'WARNING: {da_var} != {variable}, updating name')
+                    da.name = variable
             except Exception as e:
                 print(f'failed to open {fname} {e}')
-                print(f'removing {exp} from exps')
-                exps.remove(exp)
+                # print(f'removing {exp} from exps')
+                # exps.remove(exp)
+
         elif 'BARRA' in exp:
             da = get_barra_data(ds,opts,exp)
-            ds[exp] = da.interp_like(ds[template_exp], method='nearest')
 
         else:
-            print('no file found')
+            print('trying to open pp file using iris')
+
+            # check if data directory exists
+            if not os.path.exists(cycle_path):
+                print(f'{cycle_path} does not exist')
+                return None
+
+            cycle_list = sorted([x.split('/')[-2] for x in glob.glob(f'{cycle_path}/*/')])
+
+            da_list = []
+            for i,cycle in enumerate(cycle_list):
+
+                # ## TEMPORARY DATE RANGE
+                # dates = ['20170208T0000Z','20170209T0000Z','20170210T0000Z','20170211T0000Z','20170212T0000Z',
+                #         '20170213T0000Z','20170214T0000Z','20170215T0000Z','20170216T0000Z','20170217T0000Z',
+                #         '20170218T0000Z','20170219T0000Z','20170220T0000Z','20170221T0000Z']
+
+                # if cycle not in dates:
+                #     print(f'ignoring {cycle}')
+                #     continue
+
+                ######
+                
+                print('========================')
+                print(f'getting {exp} {i}: {cycle}\n')
+
+                # set paths to experiment outputs
+                reses = ['5','1','1_L']
+                exp_paths = {
+                    f'E5L_11p1_CCI': f'{cycle_path}/{cycle}/ERA5LAND_CCI/SY_11p1/GAL9/um',
+                    f'E5L_11p1_CCI_WC': f'{cycle_path}/{cycle}/ERA5LAND_CCI_WC/SY_11p1/GAL9/um',
+                    f'E5L_12p2_CCI_no_urban': f'{cycle_path}/{cycle}/ERA5LAND_CCI_no_urban/SY_11p1/GAL9/um',
+                    f'BR2_12p2_CCI':  f'{cycle_path}/{cycle}/BARRA_CCI/SY_12p2/GAL9/um',
+                    f'BR2_12p2_CCI_WC':  f'{cycle_path}/{cycle}/BARRA_CCI_WC/SY_12p2/GAL9/um',
+                    f'BR2_12p2_IGBP' : f'{cycle_path}/{cycle}/BARRA_IGBP/SY_12p2/GAL9/um',
+                    f'BR2_12p2_CCI_no_urban': f'{cycle_path}/{cycle}/BARRA_CCI_no_urban/SY_12p2/GAL9/um',
+                }|{
+                    f'E5L_{res}_CCI': f'{cycle_path}/{cycle}/ERA5LAND_CCI/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'E5L_{res}_CCI_WC': f'{cycle_path}/{cycle}/ERA5LAND_CCI_WC/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'E5L_{res}_CCI_no_urban': f'{cycle_path}/{cycle}/ERA5LAND_CCI_no_urban/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'BR2_{res}_CCI':  f'{cycle_path}/{cycle}/BARRA_CCI/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'BR2_{res}_CCI_WC':  f'{cycle_path}/{cycle}/BARRA_CCI_WC/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'BR2_{res}_IGBP' : f'{cycle_path}/{cycle}/BARRA_IGBP/SY_{res}/RAL3P2/um' for res in reses
+                }|{
+                    f'BR2_{res}_CCI_no_urban': f'{cycle_path}/{cycle}/BARRA_CCI_no_urban/SY_{res}/RAL3P2/um' for res in reses
+                }
+
+                # check if any of the variables files are in the directory
+                if len(glob.glob(f"{exp_paths[exp]}/{opts['fname']}*")) == 0:
+                    print(f'no files in {exp_paths[exp]}')
+                    cycle_list.remove(cycle)
+                    continue
+
+                ppfname = f"{exp_paths[exp]}/{opts['fname']}*"
+                
+                try:
+                    cb = iris.load_cube(ppfname, constraint=opts['constraint'])
+                    # fix timestamp/bounds error in accumulations
+                    if cb.coord('time').bounds is not None:
+                        print('WARNING: updating time point to right bound')
+                        cb.coord('time').points = cb.coord('time').bounds[:,1]
+                    dal = xr.DataArray().from_iris(cb)
+                except Exception as e:
+                    print(f'trouble opening {ppfname}')
+                    print(e)
+                    # return None
+
+                da_list.append(dal)
+
+            if len(da_list) == 0:
+                print(f'no data found for {exp} in {cycle_path}')
+            else:
+                da = xr.concat(da_list, dim='time')
+                ##### save pp to netcdf ######
+                if pp_to_netcdf:
+                    # set decimal precision to reduce filesize (definded fmt precision +1)
+                    precision = int(opts['fmt'].split('.')[1][0]) + 1
+                    da = da.round(precision)
+                    
+                    # drop unessasary dimensions
+                    if 'forecast_period' in da.coords:
+                        da = da.drop_vars('forecast_period')
+                    if 'forecast_reference_time' in da.coords:
+                        da = da.drop_vars('forecast_reference_time')
+                    
+                    # chunk to optimise save
+                    if len(da.dims)==3:
+                        itime, ilon, ilat = da.shape
+                        da = da.chunk({'time':24,'longitude':ilon,'latitude':ilat})
+                    elif len(da.dims)==2:
+                        ilon, ilat = da.shape
+                        da = da.chunk({'longitude':ilon,'latitude':ilat})
+                    
+                    # encoding
+                    da.time.encoding.update({'dtype':'int32'})
+                    da.longitude.encoding.update({'dtype':'float32', '_FillValue': -999})
+                    da.latitude.encoding.update({'dtype':'float32', '_FillValue': -999})
+                    da.encoding.update({'zlib':'true', 'shuffle': True, 'dtype':opts['dtype'], '_FillValue': -999})
+
+                    # create directory if it doesn't exist
+                    os.makedirs(f'{datapath}/{opts["plot_fname"]}', exist_ok=True)
+
+                    print(f'saving to netcdf: {fname}')
+                    da.to_netcdf(fname, unlimited_dims='time')
+
+            # test if substring 'temperature' is part of the variable name
+            if 'temperature' in variable:
+                print(f'converting {variable} from K to C')
+                da = da - 273.15
+                da.attrs['units'] = 'C'
+
+        # interpolate to first exp grid
+        if i_exp==0:
+            template_exp = exp
+            ds[exp] = da
+        else:
+            # check if the coordinates match with the template_exp
+            if (da.longitude.equals(ds[template_exp].longitude) and da.latitude.equals(ds[template_exp].latitude)):
+                print(f'  {exp} at same resolution as {template_exp}, no regridding necessary')
+                ds[exp] = da
+            else:
+                print(f'  regridding to {template_exp}')
+                ds[exp] = da.interp_like(ds[template_exp], method='nearest')
 
     # update the ds timezone attribute as "UTC"
     ds.time.attrs.update({'timezone':'UTC'})
@@ -1731,7 +1875,7 @@ def get_variable_opts(variable):
             'fmt'       : '{:.2f}',
             })
         
-    if variable == 'anthropogenci_heat_flux':
+    if variable == 'anthropogenic_heat_flux':
         opts.update({
             'constraint': 'm01s03i721',
             'plot_title': 'anthropogenic heat flux',
@@ -1916,8 +2060,8 @@ def get_variable_opts(variable):
             'plot_fname': 'surface_net_shortwave_flux',
             'units'     : 'W m-2',
             'fname'     : 'umnsaa_psurfa',
-            'vmin'      : -250,
-            'vmax'      : 50,
+            'vmin'      : 0,
+            'vmax'      : 1000,
             'cmap'      : 'inferno',
             'fmt'       : '{:.1f}',
             })
@@ -1927,8 +2071,8 @@ def get_variable_opts(variable):
             'constraint': 'surface_downwelling_shortwave_flux_in_air',
             'units'     : 'W m-2',
             'fname'     : 'umnsaa_psurfa',
-            'vmin'      : -250,
-            'vmax'      : 50,
+            'vmin'      : 0,
+            'vmax'      : 1000,
             'cmap'      : 'inferno',
             'fmt'       : '{:.1f}',
             })
@@ -1939,7 +2083,7 @@ def get_variable_opts(variable):
             'units'     : 'W m-2',
             'fname'     : 'umnsaa_psurfa',
             'vmin'      : -250,
-            'vmax'      : 50,
+            'vmax'      : 450,
             'cmap'      : 'inferno',
             'fmt'       : '{:.1f}',
             })
@@ -2090,7 +2234,7 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_shortwave_flux':
         opts.update({
             'constraint': 'm01s01i208',
-            'plot_title': 'outgoing shortwave radiation flux (top of atmosphere)',
+            'plot_title': 'shortwave radiation flux (toa)',
             'plot_fname': 'toa_shortwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
@@ -2103,7 +2247,7 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_shortwave_flux_corrected':
         opts.update({
             'constraint': 'm01s01i205',
-            'plot_title': 'outgoing shortwave radiation flux corrected (top of atmosphere)',
+            'plot_title': 'shortwave radiation flux corrected (toa)',
             'plot_fname': 'toa_shortwave_corrected',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
@@ -2116,7 +2260,7 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_longwave_flux':
         opts.update({
             'constraint': 'toa_outgoing_longwave_flux',
-            'plot_title': 'outgoing longwave radiation flux (top of atmosphere)',
+            'plot_title': 'longwave radiation flux (toa)',
             'plot_fname': 'toa_longwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
@@ -2129,7 +2273,7 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_shortwave_radiation_flux':
         opts.update({
             'constraint': 'm01s01i205',
-            'plot_title': 'outgoing shortwave radiation flux (top of atmosphere)',
+            'plot_title': 'shortwave radiation flux (toa)',
             'plot_fname': 'toa_shortwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_vera',
@@ -2270,7 +2414,7 @@ def get_variable_opts(variable):
             'fname'     : 'umnsaa_pverb',
             'vmin'      : 0,
             'vmax'      : 1,
-            'cmap'      : 'Greys',
+            'cmap'      : 'Greys_r',
             'fmt'       : '{:.3f}',
             })
 
@@ -2495,6 +2639,77 @@ def get_variable_opts(variable):
             'cmap'      : 'cividis',
             'fmt'       : '{:.6f}',
             })
+
+    elif variable == 'upward_air_velocity_at_300m':
+        opts.update({
+            'constraint': iris.Constraint(name='upward_air_velocity', height=300.),
+            'units'     : 'm s-1',
+            'fname'     : 'umnsaa_pb',
+            'vmin'      : -2,
+            'vmax'      : 2,
+            'cmap'      : 'bwr',
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'upward_air_velocity_at_1000m':
+        opts.update({
+            'constraint': iris.Constraint(name='upward_air_velocity', height=300.),
+            'units'     : 'm s-1',
+            'fname'     : 'umnsaa_pb',
+            'vmin'      : -2,
+            'vmax'      : 2,
+            'cmap'      : 'bwr',
+            'fmt'       : '{:.2f}',
+            })
+
+        
+    elif variable == 'air_temperature_10min':
+        opts.update({
+            'constraint': 'air_temperature',
+            'plot_title': 'air temperature (1.5 m)',
+            'plot_fname': 'air_temperature_1p5m',
+            'units'     : '°C',
+            'obs_key'   : 'Tair',
+            'fname'     : 'umnsa_spec',
+            'vmin'      : 0,
+            'vmax'      : 50,
+            'cmap'      : 'inferno',
+            'threshold' : 2,
+            'fmt'       : '{:.2f}',
+            })
+
+    elif variable == 'wind_speed_of_gust_10min':
+        opts.update({
+            'constraint': iris.Constraint(
+                name='wind_speed_of_gust', 
+                cube_func=lambda cube: cube.cell_methods == ()),
+                'plot_title': 'wind speed of gust',
+                'plot_fname': 'wind_gust',
+                'units'     : 'm/s',
+                'obs_key'   : 'Wind_gust',
+                'fname'     : 'umnsa_spec',
+                'vmin'      : 10,
+                'vmax'      : 40,
+                'cmap'      : 'turbo',
+                'fmt'       : '{:.2f}',
+                })
+
+    elif variable == 'max_wind_speed_of_gust_10min':
+        opts.update({
+            'constraint': iris.Constraint(
+                name='wind_speed_of_gust', 
+                cube_func=lambda cube: iris.coords.CellMethod(
+                    method='maximum', coords='time', intervals='1 hour'
+                    ) in cube.cell_methods),
+                'plot_title': 'max wind speed of gust',
+                'plot_fname': 'wind_gust_max',
+                'units'     : 'm/s',
+                'fname'     : 'umnsa_spec',
+                'vmin'      : 10,
+                'vmax'      : 40,
+                'cmap'      : 'turbo',
+                'fmt'       : '{:.2f}',
+                })
 
     elif variable == 'landfrac':
         opts.update({

@@ -187,8 +187,8 @@ if __name__ == "__main__":
             out_dir = f'{datapath}/{opts["plot_fname"]}'
 
             # make directory if it doesn't exist
-            if not os.path.exists(out_dir):
-                os.makedirs(out_dir)
+            if not os.path.exists(f'{datapath}/{opts["plot_fname"]}'):
+                os.makedirs(f'{datapath}/{opts["plot_fname"]}')
 
             da_list = []
             for i,cycle in enumerate(cycle_list):
@@ -269,7 +269,7 @@ if __name__ == "__main__":
             ds.latitude.encoding.update({'dtype':'float32', '_FillValue': -999})
             ds.encoding.update({'zlib':'true', 'shuffle': True, 'dtype':opts['dtype'], '_FillValue': -999})
 
-            fname = f'{out_dir}/{exp}_{opts["plot_fname"]}.nc'
+            fname = f'{datapath}/{opts["plot_fname"]}/{exp}_{opts["plot_fname"]}.nc'
             print(f'saving to netcdf: {fname}')
             ds.to_netcdf(fname, unlimited_dims='time')
 

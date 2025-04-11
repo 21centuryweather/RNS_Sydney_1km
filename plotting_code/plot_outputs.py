@@ -1,9 +1,9 @@
-__version__ = "2025-01-21"
+__version__ = "2025-03-29"
 __author__ = "Mathew Lipson"
 __email__ = "m.lipson@unsw.edu.au"
 
 """
-To plot the um outputs
+To plot outputs from the RNS SY_1km experiment
 """
 
 import xarray as xr
@@ -24,11 +24,19 @@ importlib.reload(cf)
 ################## set up ##################
 
 oshome=os.getenv('HOME')
-datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
+
 # plotpath = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
 plotpath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/figures'
 # stationpath = '/g/data/gb02/mf9078/AWS_5mindata_38stations'
 stationpath = '/g/data/ce10/users/mjl561/observations/AWS/au-2000_2024_5min'
+
+cylc_id = 'rns_ostia_2019_era5l_10min'
+cylc_id = 'rns_ostia_2017_3month'
+cylc_id = 'rns_ostia'
+
+datapath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}_SY_1km/netcdf'
+
+cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
 local_time_offset = 10
 local_time = False
@@ -49,14 +57,20 @@ variables_done = [
     ]
 
 variables = ['soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
-variables = ['dew_point_temperature']
-variables = ['specific_humidity']
-variables = ['soil_moisture_l1']
-variables = ['toa_outgoing_longwave_flux']
-variables = ['latent_heat_flux']
-variables = ['air_pressure_at_sea_level']
-variables = ['wind_speed_of_gust']
+variables = ['air_temperature_10min']
+variables = ['upward_air_velocity_at_300m']
 variables = ['air_temperature']
+variables = ['wind_speed_of_gust']
+variables = ['air_pressure_at_sea_level']
+variables = ['soil_moisture_l1']
+variables = ['latent_heat_flux']
+variables = ['specific_humidity']
+variables = ['dew_point_temperature']
+variables = ['toa_outgoing_longwave_flux']
+variables = ['surface_temperature']
+variables = ['cloud_area_fraction']
+variables = ['stratiform_rainfall_amount']
+variables = ['stratiform_rainfall_flux']
 
 exps = [
         ### Parent models ###
@@ -68,8 +82,12 @@ exps = [
         # 'E5L_1_L_CCI',
         # ### ERA5-Land CCI WordCover ###
         # 'E5L_5_CCI_WC',
-        # 'E5L_1_CCI_WC',
+        'E5L_1_CCI_WC',
         # 'E5L_1_L_CCI_WC',
+        # ### ERA5-Land CCI no urban ###
+        # 'E5L_5_CCI_no_urban',
+        # 'E5L_1_CCI_no_urban',
+        # 'E5L_1_L_CCI_no_urban',
         # # ### BARRA IGBP ###
         # 'BR2_5_IGBP',
         # 'BR2_1_IGBP',
@@ -77,7 +95,7 @@ exps = [
         # ### BARRA CCI ###
         # 'BR2_5_CCI',
         # 'BR2_1_CCI',
-        'BR2_1_L_CCI',
+        # 'BR2_1_L_CCI',
         # ### BARRA CCI WorldCover ###
         # 'BR2_5_CCI_WC',
         # 'BR2_1_CCI_WC',
@@ -177,7 +195,7 @@ def _plot_stations(ds, obs, sids, stations, opts, suffix):
 #                 # cmap='magma',
 #             )
 
-#     cf.plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=200)
+#     cf.plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,slabels=False,fill_obs=True,distance=100)
 #     cf.make_mp4(fnamein,fnameout,fps=12,quality=26)
 
 #     # # make gif
@@ -209,7 +227,7 @@ def create_soil_moisture_plots(suffix=''):
     return
 
 def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, 
-                                        suffix='', plot_vs_obs=False, masked=True):
+                                        suffix='', plot_vs_obs=False, masked=True, distance=100):
 
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
     fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
@@ -222,13 +240,14 @@ def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, ti
         print(f'{i+1} of {len(times)}')
         if plot_vs_obs:
             fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, datapath,
-                                                      itime=i, masked=masked, distance=100, suffix=suffix)
+                                                      itime=i, masked=masked, distance=distance, suffix=suffix)
         else:
-            fig, fname = cf.create_spatial_timeseries_plot(exps, ds, vopts, datapath, suffix, i, masked)
+            fig, fname = cf.create_spatial_timeseries_plot(exps, ds, vopts, sids, stations, obs, datapath,
+                                   itime=i, masked=masked, distance=distance, suffix=suffix)
         fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
-    cf.make_mp4(fnamein,fnameout,fps=18,quality=26)
+    cf.make_mp4(fnamein,fnameout,fps=24,quality=26)
 
     # # remove all spatial png files
     # for file in glob.glob(fnamein):
@@ -274,135 +293,135 @@ def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, ti
 
 #     return fig, fname
 
-def create_spatial_timeseries_plot(ds, exps, suffix='', itime=0,  masked=False, distance=100):
+# def create_spatial_timeseries_plot(ds, exps, suffix='', itime=0,  masked=False, distance=100):
 
-    lsm_opts = cf.get_variable_opts('land_sea_mask')
-    lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
+#     lsm_opts = cf.get_variable_opts('land_sea_mask')
+#     lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
 
-    if masked:
-        ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
-    else:
-        ds_masked = ds.copy()
-    if itime is not None:
-        dss_masked = ds_masked.isel(time=itime)
-    else:
-        dss_masked = ds_masked.copy()
+#     if masked:
+#         ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
+#     else:
+#         ds_masked = ds.copy()
+#     if itime is not None:
+#         dss_masked = ds_masked.isel(time=itime)
+#     else:
+#         dss_masked = ds_masked.copy()
 
-    fig, fname = cf.plot_spatial(exps, dss_masked, vopts, [], stations, obs, slabels=False, fill_size=10,
-        fill_obs=False, ncols=len(exps), distance=distance, suffix=suffix)
+#     fig, fname = cf.plot_spatial(exps, dss_masked, vopts, [], stations, obs, slabels=False, fill_size=10,
+#         fill_obs=False, ncols=len(exps), distance=distance, suffix=suffix)
 
-    # create new ax on the bottom of the current axes
-    axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
-    axins.set_title(f'Domain averaged {opts["plot_title"]}')
+#     # create new ax on the bottom of the current axes
+#     axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
+#     axins.set_title(f'Domain averaged {opts["plot_title"]}')
     
-    # calculate the spatially averaged timeseries for each experiment
-    ts = ds_masked.mean(dim=['latitude','longitude'])
-    ts = ts.to_dataframe()[exps]
-    # if ts has multiindex, drop the second index
-    if isinstance(ts.index, pd.MultiIndex):
-        ts.index = ts.index.droplevel(1)
+#     # calculate the spatially averaged timeseries for each experiment
+#     ts = ds_masked.mean(dim=['latitude','longitude'])
+#     ts = ts.to_dataframe()[exps]
+#     # if ts has multiindex, drop the second index
+#     if isinstance(ts.index, pd.MultiIndex):
+#         ts.index = ts.index.droplevel(1)
 
-    # plot the timeseries
-    ts_plot = ts.plot(ax=axins)
+#     # plot the timeseries
+#     ts_plot = ts.plot(ax=axins)
     
-    # update axins legend
-    axins.legend([exp_plot_titles[exp] for exp in exps], loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
+#     # update axins legend
+#     axins.legend([exp_plot_titles[exp] for exp in exps], loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
 
-    # get xticks and labels
-    xticks = axins.get_xticks()
+#     # get xticks and labels
+#     xticks = axins.get_xticks()
 
-    if itime is not None:
-        for i,exp in enumerate(exps):
-            # get colour from ts_plot
-            exp_col = ts_plot.get_lines()[i].get_color()
-            # add point for current time on timeseries for each experiment
-            axins.scatter(ts.index[itime], ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+#     if itime is not None:
+#         for i,exp in enumerate(exps):
+#             # get colour from ts_plot
+#             exp_col = ts_plot.get_lines()[i].get_color()
+#             # add point for current time on timeseries for each experiment
+#             axins.scatter(ts.index[itime], ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
 
-    return fig, fname
+#     return fig, fname
 
-def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
-                                          itime=0, masked=False, distance=100, suffix=''):
+# def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
+#                                           itime=0, masked=False, distance=100, suffix=''):
 
-    lsm_opts = cf.get_variable_opts('land_sea_mask')
-    lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
+#     lsm_opts = cf.get_variable_opts('land_sea_mask')
+#     lsm_ds = cf.open_output_netcdf([exps[0]], lsm_opts, 'land_sea_mask', datapath)
 
-    # ensure obs match passed ds in time and space
-    # select only obs that align with ds model times
-    if not obs.empty:
-        obs = obs.loc[ds.time.values]
+#     # ensure obs match passed ds in time and space
+#     # select only obs that align with ds model times
+#     if not obs.empty:
+#         obs = obs.loc[ds.time.values]
 
-    # trim sids to those in ds
-    sids_to_pass = cf.trim_sids(ds, obs, sids, stations)
+#     # trim sids to those in ds
+#     sids_to_pass = cf.trim_sids(ds, obs, sids, stations)
 
-    # get masked data
-    if masked:
-        ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
-    else:
-        ds_masked = ds.copy()
-    if itime is not None:
-        dss_masked = ds_masked.isel(time=itime)
-    else:
-        dss_masked = ds_masked.copy()
-    # dss_masked['time'] = time
+#     # get masked data
+#     if masked:
+#         ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
+#     else:
+#         ds_masked = ds.copy()
+#     if itime is not None:
+#         dss_masked = ds_masked.isel(time=itime)
+#     else:
+#         dss_masked = ds_masked.copy()
+#     # dss_masked['time'] = time
 
-    ########## plot ##########
+#     ########## plot ##########
 
-    fig, fname = cf.plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=True, fill_size=10,
-        fill_obs=True, ncols=len(exps), distance=distance, suffix=suffix)
+#     fig, fname = cf.plot_spatial(exps, dss_masked, vopts, sids_to_pass, stations, obs, slabels=True, fill_size=10,
+#         fill_obs=True, ncols=len(exps), distance=distance, suffix=suffix)
 
-    fname = fname.split('.png')[0] + '_vs_obs.png'
+#     fname = fname.split('.png')[0] + '_vs_obs.png'
 
-    # create new ax on the bottom of the current axes
-    axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
-    axins.set_title(f'Site averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
+#     # create new ax on the bottom of the current axes
+#     axins = fig.add_axes([0.08, -0.4, 0.83, 0.3])
+#     axins.set_title(f'Site averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
 
-    # calculate the site location averaged timeseries for each experiment
+#     # calculate the site location averaged timeseries for each experiment
 
-    sim_site_list = []
-    for sid in sids_to_pass:
-        lat = stations.loc[sid,'lat']
-        lon = stations.loc[sid,'lon']
-        sim_site = ds_masked.sel(latitude=lat,longitude=lon, method='nearest').to_dataframe()[exps]
-        sim_site_list.append(sim_site)
-    # combine sim_site_list and calculate average for each experiment
-    sim_ts = pd.concat(sim_site_list).groupby(level=0).mean()
+#     sim_site_list = []
+#     for sid in sids_to_pass:
+#         lat = stations.loc[sid,'lat']
+#         lon = stations.loc[sid,'lon']
+#         sim_site = ds_masked.sel(latitude=lat,longitude=lon, method='nearest').to_dataframe()[exps]
+#         sim_site_list.append(sim_site)
+#     # combine sim_site_list and calculate average for each experiment
+#     sim_ts = pd.concat(sim_site_list).groupby(level=0).mean()
 
-    # plot the timeseries
-    ts_plot = sim_ts.plot(ax=axins)
-    axins.set_ylabel(opts['units'])
+#     # plot the timeseries
+#     ts_plot = sim_ts.plot(ax=axins)
+#     axins.set_ylabel(opts['units'])
 
-    # now plot the site observation average
-    obs_ts = obs[sids_to_pass].mean(axis=1)
-    obs_ts.name = 'observations'
-    obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
+#     # now plot the site observation average
+#     obs_ts = obs[sids_to_pass].mean(axis=1)
+#     obs_ts.name = 'observations'
+#     obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
 
-    if itime is not None:
-        for i,exp in enumerate(exps):
-            # get colour from ts_plot
-            exp_col = ts_plot.get_lines()[i].get_color()
-            # add point for current time on timeseries for each experiment
-            axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
-            # add point for observations
-            axins.scatter(sim_ts.index[itime], obs_ts.iloc[itime], color='black', s=20, clip_on=False)
+#     if itime is not None:
+#         for i,exp in enumerate(exps):
+#             # get colour from ts_plot
+#             exp_col = ts_plot.get_lines()[i].get_color()
+#             # add point for current time on timeseries for each experiment
+#             axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+#             # add point for observations
+#             axins.scatter(sim_ts.index[itime], obs_ts.iloc[itime], color='black', s=20, clip_on=False)
 
-    # get legend handles and labels
-    handles, labels = axins.get_legend_handles_labels()
-    # add MAE and BIAS to labels in exp
-    for exp in exps:
-        mae = cf.calc_MAE(sim_ts[exp], obs_ts)
-        mbe = cf.calc_MBE(sim_ts[exp], obs_ts)
-        labels[exps.index(exp)] = f'{exp_plot_titles[exp]}    MAE: {mae:.2f}, MBE: {mbe:.2f}]'
-    axins.legend(handles, labels, loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
+#     # get legend handles and labels
+#     handles, labels = axins.get_legend_handles_labels()
+#     # add MAE and BIAS to labels in exp
+#     for exp in exps:
+#         mae = cf.calc_MAE(sim_ts[exp], obs_ts)
+#         mbe = cf.calc_MBE(sim_ts[exp], obs_ts)
+#         labels[exps.index(exp)] = f'{exp_plot_titles[exp]}    MAE: {mae:.2f}, MBE: {mbe:.2f}]'
+#     axins.legend(handles, labels, loc='upper right', fontsize=8, bbox_to_anchor=(1.0,-0.2))
 
-    #### diurnal plot ####
-    if itime is None:
-        df = pd.concat([sim_ts, obs_ts], axis=1)
-        df_diurnal = df.groupby(df.index.hour).mean()
-        # plot with observations column in black
-        df_diurnal.plot(color=[exp_colours[exp] for exp in exps]+['black'])
-        plt.title(f'Diurnally averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
+#     #### diurnal plot ####
+#     if itime is None:
+#         df = pd.concat([sim_ts, obs_ts], axis=1)
+#         df_diurnal = df.groupby(df.index.hour).mean()
+#         # plot with observations column in black
+#         df_diurnal.plot(color=[exp_colours[exp] for exp in exps]+['black'])
+#         plt.title(f'Diurnally averaged {opts["plot_title"]}: {len(sids_to_pass)} sites')
 
-    return fig, fname
+#     return fig, fname
 
 # def create_spatial_timeofday_plot(suffix='', hour=3):
 
@@ -516,9 +535,18 @@ def set_up_plot_attrs(exps, plotpath):
     exp_plot_titles = {
         'ACCESS-G'       : 'ACCESS-G3 Global',
         'E5L_11p1_CCI'   : 'RNS 11.1km (ERA5-Land, CCI)',
+
         'E5L_5_CCI'      : 'RNS 5km (ERA5-Land, CCI)',
         'E5L_1_CCI'      : 'RNS 1km (ERA5-Land, CCI)',
         'E5L_1_L_CCI'    : 'RNS 1km (ERA5-Land, CCI large domain)',
+
+        'E5L_5_CCI_WC'   : 'RNS 5km (ERA5-Land, CCI+WorldCover)',
+        'E5L_1_CCI_WC'   : 'RNS 1km (ERA5-Land, CCI+WorldCover)',
+        'E5L_1_L_CCI_WC' : 'RNS 1km (ERA5-Land, CCI+WorldCover large domain)',
+
+        'E5L_5_CCI_no_urban' : 'RNS 5km (ERA5-Land, CCI no urban)',
+        'E5L_1_CCI_no_urban' : 'RNS 1km (ERA5-Land, CCI no urban)',
+        'E5L_1_L_CCI_no_urban' : 'RNS 1km (ERA5-Land, CCI no urban large domain)',
 
         'BR2_12p2_CCI'   : 'RNS 12.2km (BARRA-R2, CCI)',
         'BR2_5_CCI'      : 'RNS 5km (BARRA-R2, CCI)',
@@ -562,6 +590,7 @@ def set_up_plot_attrs(exps, plotpath):
     cf.plotpath = plotpath
     cf.exp_colours = exp_colours
     cf.exp_plot_titles = exp_plot_titles
+    cf.cycle_path = cycle_path
 
     return exp_colours, exp_plot_titles
 
@@ -583,10 +612,6 @@ if __name__ == "__main__":
 
     ################## get model data ##################
 
-    # folder in cylc-run name
-    cylc_id = 'rns_ostia'
-    cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
-
     exp_colours, exp_plot_titles = set_up_plot_attrs(exps, plotpath)
 
     # check if plotpath exists, make if necessary
@@ -607,12 +632,13 @@ if __name__ == "__main__":
         ds = ds.compute()
 
         #### get observations ####
-        if variable in ['sensible_heat_flux','latent_heat_flux','soil_moisture_l1','soil_moisture_l2','soil_moisture_l3']:
+        if variable in ['not_currently_available']:
+        # if variable in ['sensible_heat_flux','latent_heat_flux','soil_moisture_l1','soil_moisture_l2','soil_moisture_l3']:
             # print('getting flux obs')
             obs, stations = cf.get_flux_obs(variable, local_time_offset=None)
-            print('no obs available')
-        elif variable in ['air_temperature','dew_point_temperature','wind_speed_of_gust']:
-            obs, stations = cf.process_station_netcdf(variable, stationpath, local_time_offset=local_time_offset)
+        elif opts['constraint'] in ['air_temperature','dew_point_temperature','wind_speed_of_gust']:
+            sdate = ds.time[0]
+            obs, stations = cf.process_station_netcdf(opts['constraint'], stationpath, local_time_offset=local_time_offset)
         else:
             print('no obs available')
             # set up dummy obs and stations dataframes
@@ -633,6 +659,9 @@ if __name__ == "__main__":
         # select all stations
         sids, suffix = stations.index.tolist(), '_all'
 
+        # select inner part of ds
+
+
         # trim sids to those in ds
         sids, suffix = cf.trim_sids(ds, obs, sids, stations), '_trimmed'
 
@@ -649,56 +678,55 @@ if __name__ == "__main__":
         
         stations.loc[sids_to_pass]
 
+        # urban sids
+        urban_sids = ['67105','66212', '66194', '66037']
+
         # exlude sids to pass if they have less than 95% data in obs
         for sid in sids_to_pass:
             if obs[sid].count() < 0.95*len(obs):
                 sids_to_pass.remove(sid)
+     
 
-        # # special sids
-        # sids, suffix = ['066062','066137','070351'], '_special'
+        # # timeseries_plot_vs_obs animation
 
-        # # plotting
-        # vopts = cf.update_opts(opts,
-        #     vmin=10,
-        #     vmax=45,
-        #     )
-        # _plot_stations(ds, obs, sids, stations, vopts, suffix)
+        # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-02-08',None))
+        ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75))
 
-        # sids = ['067105','066212','070330','061260','066059','068239','063291','066043','061078','070351','066194','066161','061425','063303','067113']
-
-        # main_animation(suffix=exps[0])
-
-        # create_soil_moisture_plots(suffix='_volumetric_1km')
-
-        # fig, fname = create_spatial_timeseries_animation(ds.time.values, suffix='_5km')
-
-        # fig, fname = create_spatial_timeofday_plot(suffix='_5km', hour=3)
-        # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-
-        # fig, fname = create_spatial_timeseries_plot(ds, suffix='_1km_domain', itime=None)
-        # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-
-        # fig, fname = create_spatial_timeseries_plot(ds, suffix='_5km', itime=None)
-        # fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
-
-        # # dss between 9pm and 3am local time
-        # shour = 21 - local_time_offset
-        # ehour = 3 - local_time_offset +24
-        # dss = ds.sel(time=ds.time.dt.hour.isin(range(shour,ehour)))
-       
-
-        # timeseries_plot_vs_obs animation
-        times = ds.time.values
+        # cmap = 'cividis'
         vopts = cf.update_opts(opts,
-                    vmin=15,
-                    vmax=42,
-                    cmap='Spectral_r',
+                    # vmin=99500,
+                    # vmax=100400,
+                    # cmap=cmap,
                 )
-        # ds_subset = ds.sel(latitude=slice(-35.4,-32.4), longitude=slice(149.4,153))
-        create_spatial_timeseries_animation(exps, ds, vopts, sids_to_pass, stations, obs, times,
-                                            suffix='_1km_inferno', plot_vs_obs=True, masked=False)
+        if obs.empty:
+            fig, fname = cf.create_spatial_timeseries_plot(exps, ds_subset, vopts, sids, stations, obs, datapath,
+                                              itime=292, masked=False, distance=50, suffix=f'_test')
+        else:
+            fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds_subset, vopts, sids, stations, obs, datapath,
+                                              itime=292, masked=False, distance=50, suffix=f'_test')
 
-        # _plot_stations(ds, obs, sids, stations, opts, suffix='_12km')
+        # fig.tight_layout(pad=0.5)
+        fig.savefig(f'{plotpath}/{fname}',dpi=200) # ,bbox_inches='tight'
+
+        # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-02-08',None))
+        # times = ds.time.values
+        # create_spatial_timeseries_animation(exps, ds_subset, vopts, sids_to_pass, stations, obs, times,
+        #                                     suffix='_1km', plot_vs_obs=True, masked=False, distance=50)
+
+        # dss_diff = ds['E5L_1_CCI_WC'] - ds['E5L_1_CCI_no_urban']
+        # dss_diff.mean('time').plot()
+
+        # fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds, opts, sids_to_pass, stations, obs, datapath,
+        #                                               itime=None, masked=False, distance=50, suffix='_1km')
+        # fig, fname = cf.create_spatial_timeseries_plot(exps, ds, opts, sids_to_pass=[], stations=None, obs=obs, datapath=datapath,
+        #                                               itime=None, masked=False, distance=100, suffix='')
+
+
+
+        # cf.plot_spatial_anim([exps[0]],ds,opts,sids_to_pass,stations,obs,plotpath,slabels=False,fill_obs=True,distance=100,fps=24)
+
+
+
     
-    print('done!')
+    # print('done!')
 
