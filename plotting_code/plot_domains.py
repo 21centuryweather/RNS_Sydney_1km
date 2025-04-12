@@ -1,4 +1,4 @@
-__version__ = "2024-12-21"
+__version__ = "2025-04-12"
 __author__ = "Mathew Lipson"
 __email__ = "m.lipson@unsw.edu.au"
 
@@ -24,15 +24,13 @@ import common_functions as cf
 importlib.reload(cf)
 
 ############## set up ##############
-domain_name = 'SY'
 ancil_path = '/g/data/ce10/users/mjl561/ancils/RNS_SY_1km/SY_CCI'
 domains = ['SY_era5','SY_11p1','SY_5','SY_1_L','SY_1']
 plot_path = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
 
-# domain_name = 'Lismore'
-# ancil_path = '/scratch/ce10/mjl561/cylc-run/u-dg767/share/data/ancils/Lismore'
-# domains = ['era5', 'd1000', 'd0198']
-# plot_path = f'{oshome}'
+ancil_path = f'{oshome}/cylc-run/ancils_MC/share/data/ancils/MC'
+domains = os.listdir(ancil_path)
+plot_path = os.path.dirname(ancil_path)
 
 ############## functions ##############
 
@@ -62,6 +60,10 @@ def plot_domain_orography():
         lsm = lsm.reindex_like(data[domain],method='nearest')
         data[domain] = data[domain].where(lsm>0)
 
+    # sort domains based on their size
+    doms = sorted(domains, key=lambda x: data[x].shape[0]*data[x].shape[1], reverse=True)
+    print(doms)
+
     #############################################
 
     print(f"plotting")
@@ -76,12 +78,17 @@ def plot_domain_orography():
                             sharey=True,sharex=True,
                             subplot_kw={'projection': proj},
                             )
-    for domain in domains:
+    # update vmax based on outer domain, to nearest 100m
+    vmax = np.floor(data[doms[0]].max().values/100)*100 - 100
+
+    for domain in doms:
         print(f'plotting {domain}')
-        im = data[domain].plot(ax=ax,cmap=cmap, vmin=opts['vmin'],vmax=opts['vmax'],add_colorbar=False, transform=proj)
+        im = data[domain].plot(ax=ax,cmap=cmap, vmin=opts['vmin'],vmax=vmax,
+            add_colorbar=False, transform=proj)
         # draw rectangle around domain
         left, bottom, right, top = cf.get_bounds(data[domain])
-        ax.plot([left, right, right, left, left], [bottom, bottom, top, top, bottom], color='red', linewidth=1, linestyle='dashed' if domain=='SY_1' else 'solid')
+        ax.plot([left, right, right, left, left], [bottom, bottom, top, top, bottom], 
+            color='red', linewidth=1, linestyle='dashed' if domain=='SY_1' else 'solid')
         # label domain with white border around black text
         domain_text = f'{domain}: {data[domain].shape[0]}x{data[domain].shape[1]}'
         ax.text(right-0.1, top-0.1, f'{domain_text}', fontsize=8, ha='right', va='top', color='k',
@@ -103,7 +110,9 @@ def plot_domain_orography():
     ax = cf.distance_bar(ax,distance=200)
     ax.set_title(f'{domain} domains')
 
-    fig.savefig(f'{plot_path}/{domain}_domain_{opts["plot_fname"]}.png',dpi=300,bbox_inches='tight')
+    fname = f'{plot_path}/{domain}_domain_{opts["plot_fname"]}.png'
+    print(f'saving {fname}')
+    fig.savefig(fname,dpi=300,bbox_inches='tight')
 
     return
 
