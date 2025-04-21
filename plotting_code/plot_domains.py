@@ -10,6 +10,7 @@ import os
 import sys
 import iris
 import xarray as xr
+import rioxarray as rxr
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
@@ -24,13 +25,10 @@ import common_functions as cf
 importlib.reload(cf)
 
 ############## set up ##############
-ancil_path = '/g/data/ce10/users/mjl561/ancils/RNS_SY_1km/SY_CCI'
-domains = ['SY_era5','SY_11p1','SY_5','SY_1_L','SY_1']
-plot_path = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
-
-ancil_path = f'{oshome}/cylc-run/ancils_MC/share/data/ancils/MC'
-domains = os.listdir(ancil_path)
-plot_path = os.path.dirname(ancil_path)
+ancil_path = f'{oshome}/cylc-run/ancils_MC_5/share/data/ancils/MC'
+plot_path = os.path.dirname(ancil_path) # parent dir of ancil_path
+domains = os.listdir(ancil_path) # list of dirs in ancil_path
+region = ancil_path.split("/")[-1]
 
 ############## functions ##############
 
@@ -42,7 +40,7 @@ def plot_domain_orography():
 
     data = {}
     for domain in domains:
-        print(domain)
+        print(f'loading {domain} data')
 
         # get land sea mask ancil
         opts = get_variable_opts('land_sea_mask')
@@ -60,9 +58,11 @@ def plot_domain_orography():
         lsm = lsm.reindex_like(data[domain],method='nearest')
         data[domain] = data[domain].where(lsm>0)
 
+    # get resolutions of domains
+    rslns = {dom: data[dom].rio.resolution() for dom in domains}
     # sort domains based on their size
-    doms = sorted(domains, key=lambda x: data[x].shape[0]*data[x].shape[1], reverse=True)
-    print(doms)
+    doms = sorted(domains, key=lambda x: data[x].shape[0]*rslns[x][0]*data[x].shape[1]*rslns[x][1], reverse=True)
+    # doms = ['d0198']
 
     #############################################
 
@@ -103,14 +103,13 @@ def plot_domain_orography():
     ax.xaxis.set_visible(True)
     ax.yaxis.set_visible(True)
     ax.coastlines(color='k',linewidth=0.5,zorder=5)
-    left, bottom, right, top = cf.get_bounds(data[domains[0]])
-    # left, bottom, right, top =  (139.750003, -52.05, 186.750012, -5.049998)
+    left, bottom, right, top = cf.get_bounds(data[doms[0]])
     ax.set_extent([left, right, bottom, top], crs=proj)
     
     ax = cf.distance_bar(ax,distance=200)
-    ax.set_title(f'{domain} domains')
+    ax.set_title(f'{region} domains')
 
-    fname = f'{plot_path}/{domain}_domain_{opts["plot_fname"]}.png'
+    fname = f'{plot_path}/{region}_domains_{opts["plot_fname"]}.png'
     print(f'saving {fname}')
     fig.savefig(fname,dpi=300,bbox_inches='tight')
 
@@ -140,7 +139,7 @@ def get_variable_opts(variable):
         'constraint': 'surface_altitude',
         'units'     : 'm',
         'obs_key'   : 'None',
-        'fname'     : 'qrparm.orog.mn',
+        'fname'     : 'qrparm.orog',
         'vmin'      : 0,
         'vmax'      : 1500,
         'cmap'      : 'terrain',

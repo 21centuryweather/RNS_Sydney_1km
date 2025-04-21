@@ -32,9 +32,9 @@ stationpath = '/g/data/ce10/users/mjl561/observations/AWS/au-2000_2024_5min'
 
 cylc_id = 'rns_ostia_2019_era5l_10min'
 cylc_id = 'rns_ostia_2017_3month'
-cylc_id = 'rns_ostia'
+cylc_id = 'rns_ostia_SY_1km'
 
-datapath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}_SY_1km/netcdf'
+datapath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}/netcdf'
 
 cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
@@ -71,6 +71,7 @@ variables = ['surface_temperature']
 variables = ['cloud_area_fraction']
 variables = ['stratiform_rainfall_amount']
 variables = ['stratiform_rainfall_flux']
+variables = ['toa_outgoing_shortwave_flux_corrected']
 
 exps = [
         ### Parent models ###

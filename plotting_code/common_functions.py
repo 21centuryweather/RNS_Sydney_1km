@@ -55,6 +55,7 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
     rows = len(exps)//ncols + len(exps)%ncols
     height = rows*4+0.5
     width = 5.5 * ncols
+    # width = 2.5 * ncols
 
     proj = ccrs.PlateCarree()
 
@@ -80,15 +81,18 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
         left, bottom, right, top = get_bounds(dss)
         ax.set_extent([left, right, bottom, top], crs=proj)
 
-        ax = distance_bar(ax,distance)
-        ax.set_title(exp_plot_titles[exp])
+        # ax = distance_bar(ax,distance)
+        ax.set_title(exp_plot_titles[exp], fontsize=8)
+        # ax.set_title('')
         
         # show ticks on all subplots but labels only on first column and last row
         subplotspec = ax.get_subplotspec()
-        ax.set_ylabel('latitude [degrees]') if subplotspec.is_first_col() else ax.set_ylabel('')
-        ax.set_xlabel('longitude [degrees]') if subplotspec.is_last_row() else ax.set_xlabel('')
-        ax.tick_params(axis='y', labelleft=subplotspec.is_first_col(), labelright=False, labelsize=8)
-        ax.tick_params(axis='x', labelbottom=subplotspec.is_last_row(), labeltop=False, labelsize=8) 
+        ax.set_ylabel('latitude [degrees]', fontsize=6) if subplotspec.is_first_col() else ax.set_ylabel('')
+        ax.set_xlabel('longitude [degrees]', fontsize=6) if subplotspec.is_last_row() else ax.set_xlabel('')
+        ax.tick_params(axis='y', labelleft=subplotspec.is_first_col(), labelright=False, labelsize=6)
+        ax.tick_params(axis='x', labelbottom=subplotspec.is_last_row(), labeltop=False, labelsize=6) 
+        # ax.set_ylabel('')
+        # ax.set_xlabel('')
 
         # station labels and values
         if len(sids) > 0:
@@ -129,9 +133,10 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
             cbar.ax.set_ylabel(cbar_title)
             cbar.ax.tick_params(labelsize=8)
 
-    title = f"{opts['plot_title'].capitalize()} [{opts['units']}] {timestamp} [{tz}]"
-    fig.suptitle(title,y=0.99)
-    fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.90,wspace=0.05,hspace=0.15)
+    title = f"{opts['plot_title'].capitalize()} [{opts['units']}]\n{timestamp} [{tz}]"
+    fig.suptitle(title,y=0.99, fontsize=10)
+    fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.88,wspace=0.05,hspace=0.15)
+    # fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.90,wspace=0.05,hspace=0.15)
 
     timestamp = timestamp.replace(' ','_').replace(':','')
     fname = f"{opts['plot_fname']}_spatial_{timestamp}_{tz}{suffix}.png"
@@ -183,9 +188,9 @@ def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
     fnameout = f"{plotpath}/{opts['plot_fname']}_spatial{suffix}"
     
-    # remove all spatial png files
-    for file in glob.glob(fnamein):
-        os.remove(file)
+    if remove_files:
+        for file in glob.glob(fnamein):
+            os.remove(file)
 
     for i,time in enumerate(ds.time.values):
         print(f'{i+1} of {len(ds.time)}')
@@ -193,7 +198,7 @@ def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
         fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
                                  slabels,fill_obs,distance,fill_size,ncols,fill_diff,
                                  show_mean,suffix)
-        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
+        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=300)
         plt.close('all')
 
     # create mp4 from png files
@@ -2234,12 +2239,13 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_shortwave_flux':
         opts.update({
             'constraint': 'm01s01i208',
+            'stash'     : 'm01s01i208',
             'plot_title': 'shortwave radiation flux (toa)',
             'plot_fname': 'toa_shortwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 50,
-            'vmax'      : 400,
+            'vmax'      : 600,
             'cmap'      : 'Greys_r',
             'fmt'       : '{:.1f}',
             })
@@ -2247,12 +2253,13 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_shortwave_flux_corrected':
         opts.update({
             'constraint': 'm01s01i205',
-            'plot_title': 'shortwave radiation flux corrected (toa)',
+            'stash'     : 'm01s01i205',
+            'plot_title': 'shortwave radiation flux (toa)',
             'plot_fname': 'toa_shortwave_corrected',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
             'vmin'      : 50,
-            'vmax'      : 400,
+            'vmax'      : 600,
             'cmap'      : 'Greys_r',
             'fmt'       : '{:.1f}',
             })
@@ -2260,12 +2267,13 @@ def get_variable_opts(variable):
     elif variable == 'toa_outgoing_longwave_flux':
         opts.update({
             'constraint': 'toa_outgoing_longwave_flux',
+            'stash'     : 'm01s02i205',
             'plot_title': 'longwave radiation flux (toa)',
             'plot_fname': 'toa_longwave',
             'units'     : 'W/m2',
             'fname'     : 'umnsaa_pvera',
-            'vmin'      : 100,
-            'vmax'      : 350,
+            'vmin'      : 20,
+            'vmax'      : 340,
             'cmap'      : 'Greys',
             'fmt'       : '{:.1f}',
             })
@@ -2727,6 +2735,7 @@ def get_variable_opts(variable):
     elif variable == 'orography':
         opts.update({
             'constraint': 'surface_altitude',
+            'stash'     : 'm01s00i033',
             'plot_title': 'orography',
             'plot_fname': 'orography',
             'units'     : 'm',
@@ -2740,6 +2749,7 @@ def get_variable_opts(variable):
     elif variable == 'land_sea_mask':
         opts.update({
             'constraint': 'land_binary_mask',
+            'stash'     : 'm01s00i030',
             'plot_title': 'land sea mask',
             'plot_fname': 'land_sea_mask',
             'units'     : 'm',
