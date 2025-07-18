@@ -1,4 +1,4 @@
-__version__ = "2025-04-12"
+__version__ = "2025-07-17"
 __author__ = "Mathew Lipson"
 __email__ = "m.lipson@unsw.edu.au"
 
@@ -25,10 +25,15 @@ import common_functions as cf
 importlib.reload(cf)
 
 ############## set up ##############
-ancil_path = f'{oshome}/cylc-run/ancils_MC_5/share/data/ancils/MC'
+
+cylc_dir = 'u-dl705'
+region = 'SY_CCI'
+
+####################################
+
+ancil_path = f'{oshome}/cylc-run/{cylc_dir}/share/data/ancils/{region}'
 plot_path = os.path.dirname(ancil_path) # parent dir of ancil_path
 domains = os.listdir(ancil_path) # list of dirs in ancil_path
-region = ancil_path.split("/")[-1]
 
 ############## functions ##############
 
@@ -160,7 +165,7 @@ def get_variable_opts(variable):
 
     # add variable to opts
     opts.update({'variable':variable})
-    
+
     return opts
 
 if __name__ == '__main__':

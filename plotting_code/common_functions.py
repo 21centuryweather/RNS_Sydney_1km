@@ -198,7 +198,7 @@ def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
         fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
                                  slabels,fill_obs,distance,fill_size,ncols,fill_diff,
                                  show_mean,suffix)
-        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=300)
+        fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
     # create mp4 from png files
@@ -445,7 +445,7 @@ def update_opts(opts,**kwargs):
     return zopts
 
 def create_spatial_timeseries_plot(exps, ds, vopts, sids_to_pass, stations, obs, datapath,
-                                   itime=None, masked=False, distance=100, suffix=''):
+                                   time=None, masked=False, distance=100, suffix=''):
 
     if masked:
         lsm_opts = get_variable_opts('land_sea_mask')
@@ -453,8 +453,8 @@ def create_spatial_timeseries_plot(exps, ds, vopts, sids_to_pass, stations, obs,
         ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
     else:
         ds_masked = ds.copy()
-    if itime is not None:
-        dss_masked = ds_masked.isel(time=itime)
+    if time is not None:
+        dss_masked = ds_masked.sel(time=time)
     else:
         dss_masked = ds_masked.copy()
 
@@ -486,12 +486,12 @@ def create_spatial_timeseries_plot(exps, ds, vopts, sids_to_pass, stations, obs,
     # get xticks and labels
     xticks = axins.get_xticks()
 
-    if itime is not None:
+    if time is not None:
         for i,exp in enumerate(exps):
             # get colour from ts_plot
             exp_col = ts_plot.get_lines()[i].get_color()
             # add point for current time on timeseries for each experiment
-            axins.scatter(ts.index[itime], ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+            axins.scatter(time, ts.loc[time][exp], color=exp_col, s=20, clip_on=False)
 
     # Adjust figure layout to ensure constant edges
     # fig.subplots_adjust(left=0.08, right=0.92, bottom=0, top=0.95, wspace=None, hspace=None)
@@ -499,7 +499,7 @@ def create_spatial_timeseries_plot(exps, ds, vopts, sids_to_pass, stations, obs,
     return fig, fname
 
 def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, datapath,
-                                          itime=0, masked=False, distance=100, suffix=''):
+                                          time=None, masked=False, distance=100, suffix=''):
 
     # ensure obs match passed ds in time and space
     # select only obs that align with ds model times
@@ -516,8 +516,8 @@ def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
         ds_masked = ds.where(lsm_ds[exps[0]].isel(time=0)==1)
     else:
         ds_masked = ds.copy()
-    if itime is not None:
-        dss_masked = ds_masked.isel(time=itime)
+    if time is not None:
+        dss_masked = ds_masked.sel(time=time)
     else:
         dss_masked = ds_masked.copy()
     # dss_masked['time'] = time
@@ -544,23 +544,26 @@ def create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, 
     # combine sim_site_list and calculate average for each experiment
     sim_ts = pd.concat(sim_site_list).groupby(level=0).mean()
 
+    # plot the timeseries
+    ts_plot = sim_ts.plot(ax=axins)
+    axins.set_ylabel(vopts['units'])
+
     # plot the site observation average
     obs_ts = obs[sids_to_pass].mean(axis=1).dropna()
     obs_ts.name = 'observations'
     obs_ts.plot(ax=axins, color='black', linestyle='--', label='observations')
 
-    # plot the timeseries
-    ts_plot = sim_ts.plot(ax=axins)
-    axins.set_ylabel(vopts['units'])
+    # remove xaxis title
+    axins.set_xlabel('')
 
-    if itime is not None:
+    if time is not None:
         for i,exp in enumerate(exps):
             # get colour from ts_plot
             exp_col = ts_plot.get_lines()[i].get_color()
             # add point for observations
-            axins.scatter(sim_ts.index[itime], obs_ts.iloc[itime], color='black', s=20, clip_on=False)
+            axins.scatter(time, obs_ts.loc[time], color='black', s=20, clip_on=False)
             # add point for current time on timeseries for each experiment
-            axins.scatter(sim_ts.index[itime], sim_ts.iloc[itime][exp], color=exp_col, s=20, clip_on=False)
+            axins.scatter(time, sim_ts.loc[time][exp], color=exp_col, s=20, clip_on=False)
 
     # get legend handles and labels
     handles, labels = axins.get_legend_handles_labels()
@@ -1810,7 +1813,7 @@ def open_output_netcdf(exps,opts,variable,datapath,pp_to_netcdf=True):
                         da = da.chunk({'longitude':ilon,'latitude':ilat})
                     
                     # encoding
-                    da.time.encoding.update({'dtype':'int32'})
+                    # da.time.encoding.update({'dtype':'int32'})
                     da.longitude.encoding.update({'dtype':'float32', '_FillValue': -999})
                     da.latitude.encoding.update({'dtype':'float32', '_FillValue': -999})
                     da.encoding.update({'zlib':'true', 'shuffle': True, 'dtype':opts['dtype'], '_FillValue': -999})
@@ -1821,8 +1824,9 @@ def open_output_netcdf(exps,opts,variable,datapath,pp_to_netcdf=True):
                     print(f'saving to netcdf: {fname}')
                     da.to_netcdf(fname, unlimited_dims='time')
 
-            # test if substring 'temperature' is part of the variable name
-            if 'temperature' in variable:
+        # test if substring 'temperature' is part of the variable name
+        if 'temperature' in variable:
+            if da.max() > 200:
                 print(f'converting {variable} from K to C')
                 da = da - 273.15
                 da.attrs['units'] = 'C'
@@ -1839,6 +1843,8 @@ def open_output_netcdf(exps,opts,variable,datapath,pp_to_netcdf=True):
             else:
                 print(f'  regridding to {template_exp}')
                 ds[exp] = da.interp_like(ds[template_exp], method='nearest')
+
+
 
     # update the ds timezone attribute as "UTC"
     ds.time.attrs.update({'timezone':'UTC'})

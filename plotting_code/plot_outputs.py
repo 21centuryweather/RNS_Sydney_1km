@@ -26,20 +26,20 @@ importlib.reload(cf)
 oshome=os.getenv('HOME')
 
 # plotpath = f'{oshome}/postdoc/02-Projects/P58_Sydney_1km/figures'
-plotpath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/figures'
+
 # stationpath = '/g/data/gb02/mf9078/AWS_5mindata_38stations'
 stationpath = '/g/data/ce10/users/mjl561/observations/AWS/au-2000_2024_5min'
 
-cylc_id = 'rns_ostia_2019_era5l_10min'
-cylc_id = 'rns_ostia_2017_3month'
 cylc_id = 'rns_ostia_SY_1km'
+cylc_id = 'rns_ostia_2017_3month'
+cylc_id = 'rns_ostia_2019_era5l_10min'
 
 datapath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}/netcdf'
-
+plotpath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}/figures'
 cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
 local_time_offset = 10
-local_time = False
+local_time = True
 
 variables_done = [
     'land_sea_mask','air_temperature','surface_temperature','relative_humidity',
@@ -58,7 +58,6 @@ variables_done = [
 
 variables = ['soil_moisture_l1','soil_moisture_l2','soil_moisture_l3','soil_moisture_l4']
 variables = ['air_temperature_10min']
-variables = ['upward_air_velocity_at_300m']
 variables = ['air_temperature']
 variables = ['wind_speed_of_gust']
 variables = ['air_pressure_at_sea_level']
@@ -72,6 +71,8 @@ variables = ['cloud_area_fraction']
 variables = ['stratiform_rainfall_amount']
 variables = ['stratiform_rainfall_flux']
 variables = ['toa_outgoing_shortwave_flux_corrected']
+variables = ['air_temperature_10min']
+variables = ['upward_air_velocity_at_300m']
 
 exps = [
         ### Parent models ###
@@ -227,7 +228,7 @@ def create_soil_moisture_plots(suffix=''):
 
     return
 
-def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, 
+def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, times, fps=24,
                                         suffix='', plot_vs_obs=False, masked=True, distance=100):
 
     fnamein = f"{plotpath}/{opts['plot_fname']}_spatial*.png"
@@ -239,16 +240,16 @@ def create_spatial_timeseries_animation(exps, ds, vopts, sids, stations, obs, ti
 
     for i,time in enumerate(times):
         print(f'{i+1} of {len(times)}')
-        if plot_vs_obs:
+        if plot_vs_obs and not obs.empty:
             fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds, vopts, sids, stations, obs, datapath,
-                                                      itime=i, masked=masked, distance=distance, suffix=suffix)
+                                                      time=time, masked=masked, distance=distance, suffix=suffix)
         else:
             fig, fname = cf.create_spatial_timeseries_plot(exps, ds, vopts, sids, stations, obs, datapath,
-                                   itime=i, masked=masked, distance=distance, suffix=suffix)
+                                   time=time, masked=masked, distance=distance, suffix=suffix)
         fig.savefig(f'{plotpath}/{fname}', bbox_inches='tight', dpi=200)
         plt.close('all')
 
-    cf.make_mp4(fnamein,fnameout,fps=24,quality=26)
+    cf.make_mp4(fnamein,fnameout,fps=fps,quality=26)
 
     # # remove all spatial png files
     # for file in glob.glob(fnamein):
@@ -686,32 +687,33 @@ if __name__ == "__main__":
         for sid in sids_to_pass:
             if obs[sid].count() < 0.95*len(obs):
                 sids_to_pass.remove(sid)
-     
 
-        # # timeseries_plot_vs_obs animation
+        # # # timeseries_plot_vs_obs animation
 
-        # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-02-08',None))
-        ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75))
+        # # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-02-08',None))
+        # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-01-08','2017-01-21'))
+        ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2019-12-01','2019-12-12'))
 
-        # cmap = 'cividis'
+        cmap = 'Spectral_r'
         vopts = cf.update_opts(opts,
-                    # vmin=99500,
-                    # vmax=100400,
+                    # vmin=15,
+                    # vmax=42,
                     # cmap=cmap,
                 )
-        if obs.empty:
-            fig, fname = cf.create_spatial_timeseries_plot(exps, ds_subset, vopts, sids, stations, obs, datapath,
-                                              itime=292, masked=False, distance=50, suffix=f'_test')
-        else:
-            fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds_subset, vopts, sids, stations, obs, datapath,
-                                              itime=292, masked=False, distance=50, suffix=f'_test')
+        # if obs.empty:
+        #     fig, fname = cf.create_spatial_timeseries_plot(exps, ds_subset, vopts, sids, stations, obs, datapath,
+        #                                       itime=12, masked=False, distance=50, suffix=f'_test')
+        # else:
+        #     fig, fname = cf.create_spatial_timeseries_plot_vs_obs(exps, ds_subset, vopts, sids, stations, obs, datapath,
+        #                                       itime=12, masked=False, distance=50, suffix=f'_test')
 
-        # fig.tight_layout(pad=0.5)
-        fig.savefig(f'{plotpath}/{fname}',dpi=200) # ,bbox_inches='tight'
+        # # # fig.tight_layout(pad=0.5)
+        # fig.savefig(f'{plotpath}/{fname}',dpi=200,bbox_inches='tight') # ,bbox_inches='tight'
 
         # ds_subset = ds.sel(latitude=slice(-35.25,-32.5), longitude=slice(149.5,152.75), time=slice('2017-02-08',None))
-        # times = ds.time.values
-        # create_spatial_timeseries_animation(exps, ds_subset, vopts, sids_to_pass, stations, obs, times,
+        # times = ds_subset.time.values[::2]
+        # # skip every second
+        # create_spatial_timeseries_animation(exps, ds_subset, vopts, sids, stations, obs, times, fps=48,
         #                                     suffix='_1km', plot_vs_obs=True, masked=False, distance=50)
 
         # dss_diff = ds['E5L_1_CCI_WC'] - ds['E5L_1_CCI_no_urban']
@@ -724,7 +726,8 @@ if __name__ == "__main__":
 
 
 
-        # cf.plot_spatial_anim([exps[0]],ds,opts,sids_to_pass,stations,obs,plotpath,slabels=False,fill_obs=True,distance=100,fps=24)
+        cf.plot_spatial_anim([exps[0]],ds_subset,vopts,sids,stations,obs,plotpath,
+            slabels=True,fill_obs=True,distance=50,remove_files=True,fps=48)
 
 
 

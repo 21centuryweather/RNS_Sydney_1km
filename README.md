@@ -10,8 +10,18 @@
 
 This project documents various simulations over Sydney (down to 1km) using the ACCESS-NRI Regional Nesting Suite with pre-alpha OSTIA (varying sea surface temperature) capability. This OSTIA pre-alpha release is NOT CURRENTLY SUPPORTED by NRI, as it is being developed/tested. For more information contact Chermelle Engel <chermelle.engel@anu.edu.au>.
 
-Most of the codebase is stored in [MOSRS](https://code.metoffice.gov.uk).
-Plotting functions and some pre-processing stored here.
+# Setup
+
+**Model**: ACCESS-rAM (with OSTIA varying sea surface temperature)  
+**Model suite**: https://code.metoffice.gov.uk/trac/roses-u/browser/d/g/7/6/8/rns_ostia_sydney_1km
+**Period**: 3 months (Dec 2019 - Feb 2020)  
+**Nests**:  
+
+1. Outer: ERA5-Land: 0.1° (~11.1 km) & BARRA-R2: 0.11° (12.2 km)
+2. Inner 1: 0.045° (~5 km)
+3. Inner 2: 0.009° (~1 km)  
+
+# Contents
 
 Contents:
 - [Domains](#domains)

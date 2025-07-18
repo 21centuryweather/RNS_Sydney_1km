@@ -30,9 +30,10 @@ importlib.reload(cf)
 tic = time.perf_counter()
 
 ######## set up ########
-datapath = '/g/data/ce10/users/mjl561/cylc-run/rns_ostia_SY_1km/netcdf'
+cylc_id = 'rns_ostia_2019_era5l_10min'
 
-cylc_id = 'rns_ostia'
+datapath = f'/g/data/ce10/users/mjl561/cylc-run/{cylc_id}/netcdf'
+cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
 variables_done = [
     'land_sea_mask','air_temperature','surface_temperature','relative_humidity',
@@ -171,9 +172,6 @@ if __name__ == "__main__":
             local_directory = local_directory)
 
     ################## get model data ##################
-
-    # folder in cylc-run name
-    cycle_path = f'/scratch/ce10/mjl561/cylc-run/{cylc_id}/share/cycle'
 
     for variable in variables:
         print(f'processing {variable}')
