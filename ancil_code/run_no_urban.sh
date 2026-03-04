@@ -21,7 +21,8 @@ do
     echo processing $dir
     python $HOME/git/RNS_Sydney_1km/ancil_code/ancil_lct_postproc_no_urban.py \
     qrparm.veg.frac_cci_pre_c4 \
-    --target-lsm qrparm.mask \
-    --output qrparm.veg.frac_cci_pre_c4
+    --output qrparm.veg.frac_cci_no_urban
+
+    cp qrparm.veg.frac_cci_no_urban qrparm.veg.frac_cci_pre_c4
 
 done
