@@ -17,7 +17,9 @@ Usage:
 
     You must rename the output manually:
 
-        cp $PATH_TO_ANCILS/qrparm.veg.frac_cci_no_urban $PATH_TO_ANCILS/qrparm.veg.frac_cci_pre_c4
+        cp $PATH_TO_ANCILS/qrparm.veg.frac_cci_no_urban.nc $PATH_TO_ANCILS/qrparm.veg.frac_cci_pre_c4.nc
+
+    NOTE THE ".nc" EXTENSION IN THE OUTPUT FILENAME. 
 
     Then release the held tasks.
 """
@@ -49,8 +51,8 @@ def main():
     # 5. save to ancil and netcdf
     print(f'saving to {output_path}')
 
-    ants.io.save.ancil(target_lct, output_path+'.pre_no_urban')
-    ants.io.save.ancil(new_lct, output_path)
+    # ants.io.save.ancil(new_lct, output_path)
+    ants.io.save.netcdf(new_lct, output_path+'.nc')
 
     return
 

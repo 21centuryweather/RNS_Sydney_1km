@@ -17,7 +17,7 @@ python ancil_lct_postproc_no_urban.py $PATH_TO_ANCILS/qrparm.veg.frac_cci_pre_c4
 
 You must rename the output manually:
 
-`cp $PATH_TO_ANCILS/qrparm.veg.frac_cci_no_urban $PATH_TO_ANCILS/qrparm.veg.frac_cci_pre_c4`
+`cp $PATH_TO_ANCILS/qrparm.veg.frac_cci_no_urban.nc $PATH_TO_ANCILS/qrparm.veg.frac_cci_pre_c4.nc`
 
 Then "release" the task and continue with the rest of the suite as normal.
 
