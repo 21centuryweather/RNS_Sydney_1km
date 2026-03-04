@@ -211,7 +211,7 @@ def plot_lct(lct, output_base, label):
     plt.close('all')
     fig, axes = plt.subplots(3,3, figsize=(15, 15), sharex=True, sharey=True)
     for i,ax in enumerate(axes.flatten()):
-        ax.imshow(lct.data[i, :, :], interpolation='none', origin='lower')
+        ax.imshow(lct.data[i, :, :], interpolation='none', origin='lower', vmin=0, vmax=1, cmap='magma')
         # xr.DataArray().from_iris(new_lct[i, :, :]).plot(ax=ax, vmin=0, vmax=0.5)
         ax.set_title(tile_titles[i])
         ax.xaxis.label.set_visible(False)
