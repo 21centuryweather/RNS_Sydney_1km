@@ -14,9 +14,18 @@ set -euo pipefail
 # location of post-processed netcdf data
 output_root_dir="/scratch/gb02/mjl561/um2nc/SY/SY_1"
 # variables_to_plot="all"
-variables_to_plot="bl_type_comb vwnd10m_b wndgust10m"
+variables_to_plot="sfc_pres"
 
 module use /g/data/xp65/public/modules
 module load conda/analysis3
 
-python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_vars.py "$output_root_dir" $variables_to_plot
+# spatial
+python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_vars.py \
+  "$output_root_dir" $variables_to_plot
+
+# diurnal for Parramatta CBD
+lat="-33.813"
+lon="151.003"
+
+python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_diurnal.py \
+  "$output_root_dir" "$lat" "$lon" $variables_to_plot
