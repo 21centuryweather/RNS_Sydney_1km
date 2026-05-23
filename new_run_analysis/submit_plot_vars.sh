@@ -12,16 +12,19 @@
 set -euo pipefail
 
 # location of post-processed netcdf data
-output_root_dir="/scratch/gb02/mjl561/um2nc/SY/SY_1"
+output_root_dir="/scratch/gb02/mjl561/um2nc/SY_djf/SY_1"
 # variables_to_plot="all"
-variables_to_plot="sfc_pres"
+# use "wind" to plot 10 m wind speed from uwnd10m_b/vwnd10m_b
+variables_to_plot="temp_scrn"
+# time_hour can be "00"-"23" (optional). Leave empty for full-period mean.
+time_hour="00"
 
 module use /g/data/xp65/public/modules
 module load conda/analysis3
 
 # spatial
 python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_vars.py \
-  "$output_root_dir" $variables_to_plot
+  "$output_root_dir" $time_hour $variables_to_plot
 
 # diurnal for Parramatta CBD
 lat="-33.813"

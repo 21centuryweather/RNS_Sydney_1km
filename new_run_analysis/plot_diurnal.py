@@ -25,7 +25,14 @@ def main(exps, output_root_dir, plot_dir, lat, lon, variables_to_plot=None):
     print(f"experiments: {', '.join(exps)}")
     print(f"point: {lat:.3f}, {lon:.3f}")
 
-    exp_var_files, var_meta, all_vars = collect_metadata(exps, output_root_dir, variables_to_plot)
+    # Split wind from other requested vars so wind-only runs skip full metadata scans.
+    vars_without_wind, wants_wind = normalize_requested_vars(variables_to_plot)
+    if variables_to_plot and not vars_without_wind and wants_wind:
+        exp_var_files = {exp: {} for exp in exps}
+        var_meta = {}
+        all_vars = []
+    else:
+        exp_var_files, var_meta, all_vars = collect_metadata(exps, output_root_dir, vars_without_wind)
     plot_all_diurnal(
         exps,
         exp_var_files,
@@ -66,18 +73,21 @@ def collect_metadata(exps, output_root_dir, variables_to_plot=None):
 
 def plot_all_diurnal(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, lat, lon, variables_to_plot=None):
     prefix = os.path.basename(os.path.normpath(output_root_dir))
-    if variables_to_plot:
-        requested = variables_to_plot
+    requested, wants_wind = normalize_requested_vars(variables_to_plot)
+    if requested:
         available = [name for name in requested if name in all_vars]
         missing = [name for name in requested if name not in all_vars]
         if missing:
             print(f"requested variables not found: {', '.join(missing)}")
         all_vars = available
         print(f"plotting {len(all_vars)} requested variables")
-        if not all_vars:
+        if not all_vars and not wants_wind:
             return
 
     exp_colors = {exp: plt.rcParams['axes.prop_cycle'].by_key()['color'][i % 10] for i, exp in enumerate(exps)}
+
+    if wants_wind:
+        plot_wind_diurnal(exps, exp_var_files, output_root_dir, plot_dir, lat, lon, exp_colors, prefix)
 
     for var_name in all_vars:
         print(f"\nprocessing variable: {var_name}")
@@ -145,6 +155,89 @@ def plot_all_diurnal(exps, exp_var_files, var_meta, all_vars, plot_dir, output_r
         out_path = os.path.join(plot_dir, fname)
         fig.savefig(out_path, dpi=200, bbox_inches='tight')
         plt.close(fig)
+
+
+def normalize_requested_vars(variables_to_plot):
+    if not variables_to_plot:
+        return [], False
+
+    requested = [var for var in variables_to_plot if var.lower() != 'wind']
+    wants_wind = any(var.lower() == 'wind' for var in variables_to_plot)
+    return requested, wants_wind
+
+
+def plot_wind_diurnal(exps, exp_var_files, output_root_dir, plot_dir, lat, lon, exp_colors, prefix):
+    var_u = 'uwnd10m_b'
+    var_v = 'vwnd10m_b'
+    units = None
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    has_data = False
+
+    for exp in exps:
+        exp_files = exp_var_files.get(exp, {})
+        if var_u not in exp_files or var_v not in exp_files:
+            exp_dir = os.path.join(output_root_dir, exp)
+            exp_files = find_variable_files(exp_dir, [var_u, var_v])
+        if var_u not in exp_files or var_v not in exp_files:
+            print(f"skipping wind for {exp}: missing {var_u} or {var_v}")
+            continue
+
+        fname_u = exp_files[var_u]
+        fname_v = exp_files[var_v]
+        print(f"opening wind components from {exp}: {fname_u}, {fname_v}")
+        da_u = open_variable(fname_u, var_u)
+        da_v = open_variable(fname_v, var_v)
+        da_u = select_first_level(da_u)
+        da_v = select_first_level(da_v)
+        da_u = select_point(da_u, lat, lon)
+        da_v = select_point(da_v, lat, lon)
+        if 'time' not in da_u.dims or 'time' not in da_v.dims:
+            print(f"skipping wind in {exp}: no time dimension")
+            continue
+
+        da_u, da_v = xr.align(da_u, da_v, join='inner')
+        da_speed = (da_u ** 2 + da_v ** 2) ** 0.5
+        series = da_speed.to_series().dropna()
+        if series.empty:
+            print(f"skipping wind in {exp}: no data at point")
+            continue
+
+        series.index = pd.to_datetime(series.index)
+        daily = series.groupby([series.index.date, series.index.hour]).mean().unstack(level=1)
+        hourly_mean = series.groupby(series.index.hour).mean()
+
+        color = exp_colors[exp]
+        for _, row in daily.iterrows():
+            ax.plot(row.index.values, row.values, color=color, alpha=0.12, linewidth=0.8)
+
+        ax.plot(hourly_mean.index.values, hourly_mean.values, color=color, linewidth=2, label=exp)
+        has_data = True
+
+        if units is None:
+            units = da_u.attrs.get('units', '')
+
+    if not has_data:
+        plt.close(fig)
+        return
+
+    ax.set_xlim(0, 23)
+    ax.set_xticks(range(0, 24, 3))
+    ax.set_xlabel('hour of day')
+    ax.set_ylabel(f"wind [{units or ''}]")
+    ax.grid(True, alpha=0.2)
+    ax.legend(loc='best', fontsize=8)
+
+    title = f"10 m wind speed [{units or ''}]\nDiurnal at {lat:.3f}, {lon:.3f}"
+    fig.suptitle(title, y=0.98, fontsize=10)
+
+    if len(exps) >= 2:
+        fname = f"{prefix}_wind_diurnal_{exps[0]}_{exps[1]}.png"
+    else:
+        fname = f"{prefix}_wind_diurnal_{exps[0]}.png"
+
+    out_path = os.path.join(plot_dir, fname)
+    fig.savefig(out_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
 
 
 def find_variable_files(exp_dir, variables_to_plot=None):
