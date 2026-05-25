@@ -33,7 +33,7 @@ import glob
 
 # Set to None to plot full domain, or provide lat/lon bounds as shown below.
 SPATIAL_SUBSET_BOUNDS = {'lat_min': -34.5, 'lat_max': -33.0, 'lon_min': 150.1, 'lon_max': 151.9}
-# SPATIAL_SUBSET_BOUNDS = None
+SPATIAL_SUBSET_BOUNDS = None
 
 def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hour=None):
 

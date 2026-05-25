@@ -46,6 +46,7 @@
 - [wnd_vcmp](#wnd_vcmp) (Meridional (V) component of the wind velocity in pressure co-ordinates.)
 - [wndgust10m](#wndgust10m) (Maximum three second wind speed (wind gust) at 10m above ground level.)
 - [wndgust10m_scale](#wndgust10m_scale) (SCALE-DEPENDENT WIND GUST (M/S))
+- [wind10m](#wind10m) (10 metre wind speed calculated from U-wind and V-wind)
 
 ## abl_ht
 
@@ -486,3 +487,13 @@
 **Spatial:** ![Spatial](plots_SY_1/SY_1_wndgust10m_scale_CTRL_NO-URBAN.png)
 
 **Diurnal:** ![Diurnal](plots_SY_1/SY_1_wndgust10m_scale_diurnal_CTRL_NO-URBAN.png)
+
+## wind10m
+
+**bom_description:** 10 metre wind speed calculated from U-wind and V-wind
+
+**stash_long_name:** None
+
+**Spatial:** ![Spatial](plots_SY_1/SY_1_wind_CTRL_NO-URBAN.png)
+
+**Diurnal:** ![Diurnal](plots_SY_1/SY_1_wind_diurnal_CTRL_NO-URBAN.png)
