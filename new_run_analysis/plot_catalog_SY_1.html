@@ -177,17 +177,34 @@
     }
 
     .name {
-      margin: 0;
+      margin: 0 0 6px;
       font-family: Consolas, Menlo, Monaco, monospace;
-      font-size: 0.98rem;
+      font-size: 1.05rem;
       color: var(--brand);
       word-break: break-word;
+    }
+
+    .name a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .name a:hover,
+    .name a:focus {
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     .desc {
       margin: 6px 0 0;
       font-size: 0.9rem;
       color: var(--muted);
+    }
+
+    .meta {
+      margin-top: 6px;
+      font-size: 0.9rem;
+      color: #35516d;
     }
 
     .image-wrap {
@@ -463,7 +480,27 @@
 
       const head = document.createElement("div");
       head.className = "card-head";
-      head.innerHTML = `<h2 class="name">${v.id}</h2><p class="desc">${v.bom}</p><p class="desc"><strong>stash_long_name:</strong> ${v.stash}</p>`;
+
+      const title = document.createElement("h2");
+      title.className = "name";
+
+      const titleLink = document.createElement("a");
+      titleLink.href = `#var-${v.id}`;
+      titleLink.textContent = v.id;
+      titleLink.setAttribute("aria-label", `Anchor link to ${v.id}`);
+      title.appendChild(titleLink);
+
+      const desc = document.createElement("p");
+      desc.className = "desc";
+      desc.textContent = v.bom;
+
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.innerHTML = `<strong>stash_long_name:</strong> ${v.stash}`;
+
+      head.appendChild(title);
+      head.appendChild(desc);
+      head.appendChild(meta);
 
       const wrap = document.createElement("div");
       wrap.className = "image-wrap";
