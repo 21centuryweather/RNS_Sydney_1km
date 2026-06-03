@@ -18,6 +18,8 @@
 
     * { box-sizing: border-box; }
 
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
       font-family: "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
@@ -169,11 +171,35 @@
       overflow: hidden;
       box-shadow: 0 4px 16px rgba(13, 45, 72, 0.08);
       display: block;
+      scroll-margin-top: 18px;
     }
 
     .card-head {
       padding: 12px 14px;
       border-bottom: 1px solid var(--line);
+    }
+
+    .title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .anchor {
+      color: #0f5f84;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.95rem;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 5px;
+    }
+
+    .anchor:hover,
+    .anchor:focus {
+      background: #e6f2fa;
+      outline: none;
     }
 
     .name {
@@ -184,21 +210,12 @@
       word-break: break-word;
     }
 
-    .name a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .name a:hover,
-    .name a:focus {
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-
     .desc {
       margin: 6px 0 0;
       font-size: 0.9rem;
       color: var(--muted);
+      width: 100%;
+      max-width: none;
     }
 
     .meta {
@@ -474,21 +491,25 @@
     function makeCard(v) {
       const card = document.createElement("article");
       card.className = "card";
-      card.id = `var-${v.id}`;
+      card.id = v.id;
       card.dataset.search = `${v.id} ${v.bom} ${v.stash}`.toLowerCase();
       card.dataset.id = v.id;
 
       const head = document.createElement("div");
       head.className = "card-head";
 
+      const titleRow = document.createElement("div");
+      titleRow.className = "title-row";
+
+      const anchor = document.createElement("a");
+      anchor.className = "anchor";
+      anchor.href = `#${v.id}`;
+      anchor.textContent = "#";
+      anchor.setAttribute("aria-label", `Anchor link to ${v.id}`);
+
       const title = document.createElement("h2");
       title.className = "name";
-
-      const titleLink = document.createElement("a");
-      titleLink.href = `#var-${v.id}`;
-      titleLink.textContent = v.id;
-      titleLink.setAttribute("aria-label", `Anchor link to ${v.id}`);
-      title.appendChild(titleLink);
+      title.textContent = v.id;
 
       const desc = document.createElement("p");
       desc.className = "desc";
@@ -498,7 +519,9 @@
       meta.className = "meta";
       meta.innerHTML = `<strong>stash_long_name:</strong> ${v.stash}`;
 
-      head.appendChild(title);
+      titleRow.appendChild(anchor);
+      titleRow.appendChild(title);
+      head.appendChild(titleRow);
       head.appendChild(desc);
       head.appendChild(meta);
 
@@ -528,7 +551,7 @@
         const li = document.createElement("li");
         const a = document.createElement("a");
         a.className = "jump-link";
-        a.href = `#var-${id}`;
+        a.href = `#${id}`;
         a.textContent = id;
         a.dataset.id = id;
         li.appendChild(a);
@@ -551,7 +574,7 @@
 
       for (const card of catalog.children) {
         const ok = q === "" || card.dataset.search.includes(q);
-        card.style.display = ok ? "flex" : "none";
+        card.style.display = ok ? "block" : "none";
         if (ok) shown += 1;
       }
 
