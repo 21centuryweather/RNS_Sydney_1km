@@ -568,6 +568,27 @@
       }
     }
 
+    function jumpToId(id) {
+      const target = document.getElementById(id);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      history.replaceState(null, "", `#${id}`);
+    }
+
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("a.anchor, a.jump-link");
+      if (!link) return;
+
+      const href = link.getAttribute("href") || "";
+      if (!href.startsWith("#")) return;
+
+      const id = href.slice(1);
+      if (!id) return;
+
+      event.preventDefault();
+      jumpToId(id);
+    });
+
     function applyFilter() {
       const q = searchBox.value.trim().toLowerCase();
       let shown = 0;
@@ -586,6 +607,12 @@
     buildJumpLinks();
     searchBox.addEventListener("input", applyFilter);
     applyFilter();
+
+    if (location.hash) {
+      const id = decodeURIComponent(location.hash.slice(1));
+      // Delay to let initial layout complete before scrolling to a hash target.
+      requestAnimationFrame(() => jumpToId(id));
+    }
   </script>
 </body>
 </html>
