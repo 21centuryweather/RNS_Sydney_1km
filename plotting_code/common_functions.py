@@ -138,8 +138,8 @@ def plot_spatial(exps, dss, opts, sids, stations, obs, cbar_loc='right', slabels
     fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.88,wspace=0.05,hspace=0.15)
     # fig.subplots_adjust(left=0.08,right=0.9,bottom=0.06,top=0.90,wspace=0.05,hspace=0.15)
 
-    timestamp = timestamp.replace(' ','_').replace(':','')
-    fname = f"{opts['plot_fname']}_spatial_{timestamp}_{tz}{suffix}.png"
+    timestamp_fname = timestamp.replace(' ','_').replace(':','')
+    fname = f"{opts['plot_fname']}_spatial_{timestamp_fname}_{tz}{suffix}.png"
     print('fname:', fname)
 
     return fig,fname
@@ -194,6 +194,10 @@ def plot_spatial_anim(exps,ds,opts,sids,stations,obs,plotpath,
 
     for i,time in enumerate(ds.time.values):
         print(f'{i+1} of {len(ds.time)}')
+        # first check if file already exists
+        timestamp = pd.to_datetime(time).strftime('%Y-%m-%d_%H%M')
+        existing_files = glob.glob(f"{plotpath}/{opts['plot_fname']}_spatial_{timestamp}_*.png")
+
         dss = ds.isel(time=i)
         fig,fname = plot_spatial(exps,dss,opts,sids,stations,obs,cbar_loc,
                                  slabels,fill_obs,distance,fill_size,ncols,fill_diff,
