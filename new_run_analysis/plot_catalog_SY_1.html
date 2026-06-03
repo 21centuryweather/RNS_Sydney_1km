@@ -95,9 +95,71 @@
 
     .catalog {
       margin-top: 14px;
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 14px;
-      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    }
+
+    .content-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .main-pane {
+      min-width: 0;
+    }
+
+    .jump-nav {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(13, 45, 72, 0.08);
+      max-height: calc(100vh - 30px);
+      overflow: auto;
+      position: sticky;
+      top: 14px;
+    }
+
+    .jump-nav-head {
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 0.86rem;
+      border-bottom: 1px solid var(--line);
+      color: #395c7a;
+      background: #f8fbff;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .jump-list {
+      list-style: none;
+      margin: 0;
+      padding: 8px;
+    }
+
+    .jump-list li {
+      margin: 0;
+    }
+
+    .jump-link {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 8px;
+      color: #1f4c70;
+      text-decoration: none;
+      font-family: Consolas, Menlo, Monaco, monospace;
+      font-size: 0.84rem;
+      line-height: 1.25;
+    }
+
+    .jump-link:hover,
+    .jump-link:focus {
+      background: #e8f1fb;
+      outline: none;
     }
 
     .card {
@@ -106,8 +168,7 @@
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 4px 16px rgba(13, 45, 72, 0.08);
-      display: flex;
-      flex-direction: column;
+      display: block;
     }
 
     .card-head {
@@ -133,7 +194,7 @@
       padding: 12px;
       display: grid;
       gap: 10px;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .slot {
@@ -162,9 +223,11 @@
 
     .img-link img {
       width: 100%;
-      height: 170px;
-      object-fit: cover;
+      height: auto;
+      object-fit: contain;
       display: block;
+      aspect-ratio: 16 / 9;
+      background: #f7fbff;
     }
 
     .img-link:hover {
@@ -203,7 +266,17 @@
       display: none;
     }
 
-    @media (max-width: 820px) {
+    @media (min-width: 1120px) {
+      .content-grid {
+        grid-template-columns: 250px minmax(0, 1fr);
+      }
+
+      .jump-nav {
+        display: block;
+      }
+    }
+
+    @media (max-width: 900px) {
       .toolbar {
         grid-template-columns: 1fr;
       }
@@ -213,7 +286,11 @@
       }
 
       .img-link img {
-        height: 190px;
+        aspect-ratio: 4 / 3;
+      }
+
+      .image-wrap {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -231,8 +308,17 @@
 
     <p class="help">Tip: search terms are case-insensitive. Missing images are shown when a file is not available in plots_SY_1.</p>
 
-    <section id="catalog" class="catalog" aria-live="polite"></section>
-    <section id="empty" class="empty">No matches found for your search.</section>
+    <div class="content-grid">
+      <aside id="jumpNav" class="jump-nav" aria-label="Jump to variable">
+        <h2 class="jump-nav-head">Jump To Variable</h2>
+        <ul id="jumpList" class="jump-list"></ul>
+      </aside>
+
+      <section class="main-pane">
+        <section id="catalog" class="catalog" aria-live="polite"></section>
+        <section id="empty" class="empty">No matches found for your search.</section>
+      </section>
+    </div>
   </main>
 
   <script>
@@ -346,7 +432,9 @@
     function makeCard(v) {
       const card = document.createElement("article");
       card.className = "card";
+      card.id = `var-${v.id}`;
       card.dataset.search = `${v.id} ${v.bom} ${v.stash}`.toLowerCase();
+      card.dataset.id = v.id;
 
       const head = document.createElement("div");
       head.className = "card-head";
@@ -366,8 +454,34 @@
     const summary = document.getElementById("summary");
     const empty = document.getElementById("empty");
     const searchBox = document.getElementById("searchBox");
+    const jumpList = document.getElementById("jumpList");
 
     variables.map(makeCard).forEach((card) => catalog.appendChild(card));
+
+    function buildJumpLinks() {
+      jumpList.innerHTML = "";
+
+      for (const card of catalog.children) {
+        const id = card.dataset.id;
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.className = "jump-link";
+        a.href = `#var-${id}`;
+        a.textContent = id;
+        a.dataset.id = id;
+        li.appendChild(a);
+        jumpList.appendChild(li);
+      }
+    }
+
+    function updateJumpVisibility() {
+      for (const a of jumpList.querySelectorAll(".jump-link")) {
+        const id = a.dataset.id;
+        const card = catalog.querySelector(`[data-id="${id}"]`);
+        const hidden = !card || card.style.display === "none";
+        a.style.display = hidden ? "none" : "block";
+      }
+    }
 
     function applyFilter() {
       const q = searchBox.value.trim().toLowerCase();
@@ -381,8 +495,10 @@
 
       summary.textContent = `${shown} of ${variables.length} variables shown`;
       empty.style.display = shown === 0 ? "block" : "none";
+      updateJumpVisibility();
     }
 
+    buildJumpLinks();
     searchBox.addEventListener("input", applyFilter);
     applyFilter();
   </script>
