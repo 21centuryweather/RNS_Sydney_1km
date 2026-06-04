@@ -210,6 +210,17 @@
       word-break: break-word;
     }
 
+    .name-link {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .name-link:hover,
+    .name-link:focus {
+      text-decoration: underline;
+      outline: none;
+    }
+
     .desc {
       margin: 6px 0 0;
       font-size: 0.9rem;
@@ -509,7 +520,11 @@
 
       const title = document.createElement("h2");
       title.className = "name";
-      title.textContent = v.id;
+      const titleLink = document.createElement("a");
+      titleLink.className = "name-link";
+      titleLink.href = `#${v.id}`;
+      titleLink.textContent = v.id;
+      title.appendChild(titleLink);
 
       const desc = document.createElement("p");
       desc.className = "desc";
@@ -568,15 +583,22 @@
       }
     }
 
-    function jumpToId(id) {
+    function jumpToId(id, updateHash = true) {
       const target = document.getElementById(id);
       if (!target) return;
+
       target.scrollIntoView({ behavior: "smooth", block: "start" });
-      history.replaceState(null, "", `#${id}`);
+
+      if (!updateHash) return;
+
+      const encodedHash = `#${encodeURIComponent(id)}`;
+      if (location.hash !== encodedHash) {
+        location.hash = encodedHash;
+      }
     }
 
     document.addEventListener("click", (event) => {
-      const link = event.target.closest("a.anchor, a.jump-link");
+      const link = event.target.closest("a.anchor, a.jump-link, a.name-link");
       if (!link) return;
 
       const href = link.getAttribute("href") || "";
@@ -611,7 +633,7 @@
     if (location.hash) {
       const id = decodeURIComponent(location.hash.slice(1));
       // Delay to let initial layout complete before scrolling to a hash target.
-      requestAnimationFrame(() => jumpToId(id));
+      requestAnimationFrame(() => jumpToId(id, false));
     }
   </script>
 </body>
