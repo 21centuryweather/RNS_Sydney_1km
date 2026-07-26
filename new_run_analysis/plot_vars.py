@@ -23,6 +23,7 @@ This script will plot all variables, comparing the two experiments:
 import os
 import sys
 import importlib.util
+import re
 import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -35,7 +36,18 @@ import glob
 SPATIAL_SUBSET_BOUNDS = {'lat_min': -34.5, 'lat_max': -33.0, 'lon_min': 150.1, 'lon_max': 151.9}
 SPATIAL_SUBSET_BOUNDS = None
 
-def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hour=None):
+# Fixed difference color limits for selected variables.
+FIXED_DIFF_LIMITS = {
+    'temp_scrn': (-1.0, 1.0),
+}
+
+# Optional fixed color limits for experiment panels (exp1/exp2).
+# If a variable is listed here, these limits override percentile-based scaling.
+FIXED_EXP_LIMITS = {
+    # 'temp_scrn': (290.0, 315.0),
+}
+
+def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None):
 
     os.makedirs(plot_dir, exist_ok=True)
     print(f"plot_dir: {plot_dir}")
@@ -44,8 +56,11 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
 
     # Split wind from other requested vars so wind-only runs skip full metadata scans.
     vars_without_wind, wants_wind = normalize_requested_vars(variables_to_plot)
-    if time_hour is not None:
-        print(f"time_hour: {time_hour:02d}")
+    if time_hours is None:
+        print("time filter: none (mean across all timesteps)")
+    else:
+        hours_msg = ', '.join(f"{hour:02d}" for hour in time_hours)
+        print(f"time filter (AEST hours): {hours_msg}")
 
     if variables_to_plot and not vars_without_wind and wants_wind:
         exp_var_files = {exp: {} for exp in exps}
@@ -62,7 +77,7 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         output_root_dir,
         variables_to_plot,
         spatial_subset_bounds,
-        time_hour,
+        time_hours,
     )
 
     return 0
@@ -93,11 +108,9 @@ def collect_metadata(exps, output_root_dir, variables_to_plot=None):
     return exp_var_files, var_meta, all_vars
 
 
-def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hour=None):
+def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None):
     prefix = os.path.basename(os.path.normpath(output_root_dir))
     subset_suffix = '_subset' if spatial_subset_bounds is not None else ''
-    hour_suffix = f"_hour{time_hour:02d}" if time_hour is not None else ''
-    suffix = f"{subset_suffix}{hour_suffix}"
     requested, wants_wind = normalize_requested_vars(variables_to_plot)
     if requested:
         available = [name for name in requested if name in all_vars]
@@ -110,7 +123,7 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
             return
 
     if wants_wind:
-        plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, suffix, spatial_subset_bounds, time_hour)
+        plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours)
     for var_name in all_vars:
         print(f"\nprocessing variable: {var_name}")
         exp_has_var = [exp for exp in exps if var_name in exp_var_files[exp]]
@@ -123,29 +136,41 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
             print(f"skipping {var_name}: non-standard dimensions {meta['dims']}")
             continue
 
-        # load and time-mean each experiment
-        exp_means = {}
+        target_hours = time_hours if time_hours is not None else [None]
+
+        # Load each experiment once, then prepare means for each requested hour.
+        exp_means_by_hour = {hour: {} for hour in target_hours}
         for exp in exp_has_var:
             fname = exp_var_files[exp][var_name]
             print(f"opening {var_name} from {exp}: {fname}")
             da = open_variable(fname, var_name)
             da = select_first_level(da)
-            da = mean_in_time(da, time_hour=time_hour)
             da = apply_spatial_subset(da, spatial_subset_bounds)
-            exp_means[exp] = da
+            means = mean_in_time_multi(da, target_hours)
+            for hour in target_hours:
+                exp_means_by_hour[hour][exp] = means[hour]
 
-        # compute difference if both experiments present
-        diff_da = None
-        if len(exps) >= 2 and all(exp in exp_means for exp in exps[:2]):
-            print(f"computing difference: {exps[0]} - {exps[1]}")
-            da1, da2 = xr.align(exp_means[exps[0]], exp_means[exps[1]], join='inner')
-            diff_da = da1 - da2
+        for hour in target_hours:
+            exp_means = exp_means_by_hour[hour]
 
-        print("plotting panels")
-        meta_plot = dict(meta)
-        if time_hour is not None:
-            meta_plot['plot_title'] = f"{meta['plot_title']} (hour {time_hour:02d})"
-        plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta_plot, prefix, suffix)
+            # compute difference if both experiments present
+            diff_da = None
+            if len(exps) >= 2 and all(exp in exp_means for exp in exps[:2]):
+                print(f"computing difference: {exps[0]} - {exps[1]}")
+                da1, da2 = xr.align(exp_means[exps[0]], exp_means[exps[1]], join='inner')
+                diff_da = da1 - da2
+
+            print("plotting panels")
+            meta_plot = dict(meta)
+            hour_suffix = ''
+            if hour is not None:
+                meta_plot['plot_title'] = f"{meta['plot_title']} (hour {hour:02d} AEST)"
+                hour_suffix = f"_hour{hour:02d}"
+            else:
+                meta_plot['plot_title'] = f"{meta['plot_title']} (all timesteps mean)"
+
+            suffix = f"{subset_suffix}{hour_suffix}"
+            plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta_plot, prefix, suffix)
 
         # break # for testing, remove to run all variables
 
@@ -159,10 +184,11 @@ def normalize_requested_vars(variables_to_plot):
     return requested, wants_wind
 
 
-def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hour=None):
+def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours=None):
     var_u = 'uwnd10m_b'
     var_v = 'vwnd10m_b'
-    exp_means = {}
+    target_hours = time_hours if time_hours is not None else [None]
+    exp_means_by_hour = {hour: {} for hour in target_hours}
     units = None
     dims = None
 
@@ -182,20 +208,22 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
         da_v = open_variable(fname_v, var_v)
         da_u = select_first_level(da_u)
         da_v = select_first_level(da_v)
-        da_u = mean_in_time(da_u, time_hour=time_hour)
-        da_v = mean_in_time(da_v, time_hour=time_hour)
         da_u = apply_spatial_subset(da_u, spatial_subset_bounds)
         da_v = apply_spatial_subset(da_v, spatial_subset_bounds)
-        da_u, da_v = xr.align(da_u, da_v, join='inner')
-        da_speed = (da_u ** 2 + da_v ** 2) ** 0.5
-        exp_means[exp] = da_speed
+
+        means_u = mean_in_time_multi(da_u, target_hours)
+        means_v = mean_in_time_multi(da_v, target_hours)
+        for hour in target_hours:
+            hour_u, hour_v = xr.align(means_u[hour], means_v[hour], join='inner')
+            da_speed = (hour_u ** 2 + hour_v ** 2) ** 0.5
+            exp_means_by_hour[hour][exp] = da_speed
 
         if units is None:
             units = da_u.attrs.get('units', '')
         if dims is None:
-            dims = list(da_speed.dims)
+            dims = list(next(iter(exp_means_by_hour.values()))[exp].dims)
 
-    if not exp_means:
+    if not any(exp_means_by_hour[hour] for hour in target_hours):
         print("no wind data available")
         return
 
@@ -210,17 +238,28 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
         'standard_dims': has_standard_dims(dims or []),
     }
 
-    diff_da = None
-    if len(exps) >= 2 and all(exp in exp_means for exp in exps[:2]):
-        print(f"computing difference: {exps[0]} - {exps[1]}")
-        da1, da2 = xr.align(exp_means[exps[0]], exp_means[exps[1]], join='inner')
-        diff_da = da1 - da2
+    for hour in target_hours:
+        exp_means = exp_means_by_hour[hour]
+        if not exp_means:
+            continue
 
-    print("plotting panels")
-    meta_plot = dict(meta)
-    if time_hour is not None:
-        meta_plot['plot_title'] = f"{meta['plot_title']} (hour {time_hour:02d})"
-    plot_variable_panels('wind', exp_means, diff_da, exps, plot_dir, meta_plot, prefix, subset_suffix)
+        diff_da = None
+        if len(exps) >= 2 and all(exp in exp_means for exp in exps[:2]):
+            print(f"computing difference: {exps[0]} - {exps[1]}")
+            da1, da2 = xr.align(exp_means[exps[0]], exp_means[exps[1]], join='inner')
+            diff_da = da1 - da2
+
+        print("plotting panels")
+        meta_plot = dict(meta)
+        hour_suffix = ''
+        if hour is not None:
+            meta_plot['plot_title'] = f"{meta['plot_title']} (hour {hour:02d} AEST)"
+            hour_suffix = f"_hour{hour:02d}"
+        else:
+            meta_plot['plot_title'] = f"{meta['plot_title']} (all timesteps mean)"
+
+        suffix = f"{subset_suffix}{hour_suffix}"
+        plot_variable_panels('wind', exp_means, diff_da, exps, plot_dir, meta_plot, prefix, suffix)
 
 def plot_styling(ax, dss, proj, title):
 
@@ -449,44 +488,107 @@ def select_first_level(da):
 
 
 def mean_in_time(da, time_hour=None):
-    """Mean over time if available, optionally restricted to a specific hour."""
+    """Mean over time if available, optionally restricted to a specific hour (AEST)."""
     if 'time' not in da.dims:
         return da
 
     if time_hour is None:
         return da.mean(dim='time', skipna=True)
 
+    # Convert AEST hour to UTC hour for data selection
+    utc_hour = (time_hour - 10) % 24
     hourly = da.groupby('time.hour').mean(dim='time', skipna=True)
-    if time_hour not in hourly['hour'].values:
-        print(f"no data for hour {time_hour:02d}; falling back to full mean")
+    if utc_hour not in hourly['hour'].values:
+        print(f"no data for hour {time_hour:02d} AEST (UTC {utc_hour:02d}); falling back to full mean")
         return da.mean(dim='time', skipna=True)
 
-    return hourly.sel(hour=time_hour)
+    return hourly.sel(hour=utc_hour)
 
 
-def parse_time_hour(args):
+def mean_in_time_multi(da, time_hours=None):
+    """Return mean fields keyed by hour (AEST); key None means full-time mean."""
+    if time_hours is None:
+        return {None: mean_in_time(da, time_hour=None)}
+
+    if 'time' not in da.dims:
+        return {hour: da for hour in time_hours}
+
+    full_mean = da.mean(dim='time', skipna=True)
+    hourly = da.groupby('time.hour').mean(dim='time', skipna=True)
+    available_hours = set(int(v) for v in hourly['hour'].values.tolist())
+    out = {}
+    for hour in time_hours:
+        utc_hour = (hour - 10) % 24
+        if utc_hour in available_hours:
+            out[hour] = hourly.sel(hour=utc_hour, drop=True)
+        else:
+            print(f"no data for hour {hour:02d} AEST (UTC {utc_hour:02d}); falling back to full mean")
+            out[hour] = full_mean
+
+    return out
+
+
+def parse_time_hours(args):
+    """Parse AEST hour arguments.
+
+    Supported forms:
+    - hour=6
+    - hours=0,6,12,18
+    - standalone numeric args, e.g. 0 6 12
+    """
+    hours = []
     for arg in args:
-        if arg.isdigit() and len(arg) <= 2:
-            hour = int(arg)
+        lower = arg.lower().strip()
+
+        if lower.isdigit() and len(lower) <= 2:
+            hour = int(lower)
             if 0 <= hour <= 23:
-                return hour
-        if arg.lower().startswith("hour="):
-            value = arg.split("=", 1)[-1]
+                hours.append(hour)
+            continue
+
+        if lower.startswith('hour='):
+            value = lower.split('=', 1)[-1]
             if value.isdigit() and len(value) <= 2:
                 hour = int(value)
                 if 0 <= hour <= 23:
-                    return hour
-    return None
+                    hours.append(hour)
+            continue
+
+        if lower.startswith('hours='):
+            value = lower.split('=', 1)[-1]
+            tokens = re.split(r'[,:;\s]+', value)
+            for token in tokens:
+                if not token:
+                    continue
+                if token.isdigit() and len(token) <= 2:
+                    hour = int(token)
+                    if 0 <= hour <= 23:
+                        hours.append(hour)
+
+    if not hours:
+        return None
+
+    # Keep user order but remove duplicates.
+    seen = set()
+    deduped = []
+    for hour in hours:
+        if hour in seen:
+            continue
+        deduped.append(hour)
+        seen.add(hour)
+    return deduped
 
 
-def is_time_hour_arg(arg, time_hour):
-    if time_hour is None:
-        return False
-    if arg.isdigit() and len(arg) <= 2:
-        return int(arg) == time_hour
-    if arg.lower().startswith("hour="):
-        value = arg.split("=", 1)[-1]
-        return value.isdigit() and int(value) == time_hour
+def is_time_hour_arg(arg):
+    lower = arg.lower().strip()
+    if lower.isdigit() and len(lower) <= 2:
+        hour = int(lower)
+        return 0 <= hour <= 23
+    if lower.startswith('hour='):
+        value = lower.split('=', 1)[-1]
+        return value.isdigit() and 0 <= int(value) <= 23
+    if lower.startswith('hours='):
+        return True
     return False
 
 
@@ -524,24 +626,39 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     """Plot mean fields and optional difference for a variable."""
     exp1 = exps[0] if len(exps) > 0 else "exp1"
     exp2 = exps[1] if len(exps) > 1 else "exp2"
-    titles = [exp1, exp2, f"{exp1} - {exp2}"]
-    panels = [
-        exp_means.get(exp1),
-        exp_means.get(exp2),
-        diff_da,
-    ]
-    ref_da = next((da for da in panels if da is not None), None)
+    da_exp1 = exp_means.get(exp1)
+    da_exp2 = exp_means.get(exp2)
+    da_diff = diff_da
+    ref_da = next((da for da in [da_exp1, da_exp2, da_diff] if da is not None), None)
     if ref_da is None:
         return
 
+    # Shared limits for experiment panels: fixed per variable if configured,
+    # otherwise global 5th/95th percentiles across exp1 and exp2.
     shared_vmin = None
     shared_vmax = None
-    base_panels = [da for da in panels[:2] if da is not None]
-    if base_panels:
-        vmins = [float(da.quantile(0.005)) for da in base_panels]
-        vmaxs = [float(da.quantile(0.995)) for da in base_panels]
-        shared_vmin = min(vmins)
-        shared_vmax = max(vmaxs)
+    if var_name in FIXED_EXP_LIMITS:
+        shared_vmin, shared_vmax = FIXED_EXP_LIMITS[var_name]
+    else:
+        base_panels = [da for da in [da_exp1, da_exp2] if da is not None]
+        if base_panels:
+            vmins = [float(da.quantile(0.05)) for da in base_panels]
+            vmaxs = [float(da.quantile(0.95)) for da in base_panels]
+            shared_vmin = min(vmins)
+            shared_vmax = max(vmaxs)
+
+    # Difference limits: fixed if configured, otherwise symmetric around zero
+    # using 5th/95th percentiles of the diff field.
+    diff_vmin = None
+    diff_vmax = None
+    if da_diff is not None:
+        if var_name in FIXED_DIFF_LIMITS:
+            diff_vmin, diff_vmax = FIXED_DIFF_LIMITS[var_name]
+        else:
+            p05 = float(da_diff.quantile(0.05))
+            p95 = float(da_diff.quantile(0.95))
+            diff_vmax = max(abs(p05), abs(p95))
+            diff_vmin = -diff_vmax
 
     proj = ccrs.PlateCarree()
     fig, axes = plt.subplots(
@@ -553,41 +670,47 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
         subplot_kw={'projection': proj},
     )
 
-    for i, (da, title) in enumerate(zip(panels, titles)):
-        ax = axes[i]
-        if da is None:
-            plot_styling(ax, ref_da, proj, title)
+    # Panels 1-2: exp1 and exp2 share the same limits and styling logic.
+    units = meta['units']
+    bom_name = meta.get('bom_name', 'variable')
+    exp_panels = [(axes[0], da_exp1, exp1), (axes[1], da_exp2, exp2)]
+    for ax, da_exp, exp_label in exp_panels:
+        if da_exp is None:
+            plot_styling(ax, ref_da, proj, exp_label)
             ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha='center', va='center', fontsize=8, color='0.5')
             continue
-        if i == 2:
-            vmax = float(da.quantile(0.995))
-            vmin = float(da.quantile(0.005))
-            vmax = max(abs(vmin), abs(vmax))
-            vmin = -vmax
-            im = da.plot(
-                ax=ax,
-                cmap='RdBu_r',
-                vmin=vmin,
-                vmax=vmax,
-                add_colorbar=False,
-                transform=proj,
-            )
-        else:
-            im = da.plot(
-                ax=ax,
-                vmin=shared_vmin,
-                vmax=shared_vmax,
-                add_colorbar=False,
-                transform=proj,
-            )
 
-        plot_styling(ax, da, proj, title)
+        im = da_exp.plot(
+            ax=ax,
+            vmin=shared_vmin,
+            vmax=shared_vmax,
+            add_colorbar=False,
+            transform=proj,
+        )
+        plot_styling(ax, da_exp, proj, exp_label)
         cbar = custom_cbar(ax, im, cbar_loc='bottom')
-        units = meta['units']
-        bom_name = meta.get('bom_name', 'variable')
-        label = f"{bom_name} difference [{units}]" if i == 2 else f"{bom_name} [{units}]"
-        cbar.set_label(label, fontsize=6)
+        cbar.set_label(f"{bom_name} [{units}]", fontsize=6)
         cbar.ax.tick_params(labelsize=6)
+
+    # Panel 3: diff
+    ax3 = axes[2]
+    diff_title = f"{exp1} - {exp2}"
+    if da_diff is None:
+        plot_styling(ax3, ref_da, proj, diff_title)
+        ax3.text(0.5, 0.5, "no data", transform=ax3.transAxes, ha='center', va='center', fontsize=8, color='0.5')
+    else:
+        im3 = da_diff.plot(
+            ax=ax3,
+            cmap='RdBu_r',
+            vmin=diff_vmin,
+            vmax=diff_vmax,
+            add_colorbar=False,
+            transform=proj,
+        )
+        plot_styling(ax3, da_diff, proj, diff_title)
+        cbar3 = custom_cbar(ax3, im3, cbar_loc='bottom')
+        cbar3.set_label(f"{bom_name} difference [{units}]", fontsize=6)
+        cbar3.ax.tick_params(labelsize=6)
 
     desc = meta['plot_title']
     if len(desc) > 178:
@@ -613,9 +736,9 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         output_root_dir = sys.argv[1]
     variables_to_plot = sys.argv[2:] if len(sys.argv) > 2 else []
-    time_hour = parse_time_hour(variables_to_plot)
-    if time_hour is not None:
-        variables_to_plot = [arg for arg in variables_to_plot if not is_time_hour_arg(arg, time_hour)]
+    time_hours = parse_time_hours(variables_to_plot)
+    if time_hours is not None:
+        variables_to_plot = [arg for arg in variables_to_plot if not is_time_hour_arg(arg)]
     # if 'all' in variables_to_plot, plot all variables
     if any(arg.lower() == "all" for arg in variables_to_plot):
         variables_to_plot = []
@@ -627,7 +750,7 @@ if __name__ == "__main__":
         plot_dir,
         variables_to_plot,
         spatial_subset_bounds=SPATIAL_SUBSET_BOUNDS,
-        time_hour=time_hour,
+        time_hours=time_hours,
     )
 
     # # Sam's dask setup https://github.com/21centuryweather/dask_setup
