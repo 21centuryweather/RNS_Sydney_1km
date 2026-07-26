@@ -38,16 +38,23 @@ SPATIAL_SUBSET_BOUNDS = None
 
 # Fixed difference color limits for selected variables.
 FIXED_DIFF_LIMITS = {
-    'temp_scrn': (-1.0, 1.0),
+    # 'temp_scrn': (-1.0, 1.0),
 }
 
 # Optional fixed color limits for experiment panels (exp1/exp2).
 # If a variable is listed here, these limits override percentile-based scaling.
 FIXED_EXP_LIMITS = {
-    # 'temp_scrn': (290.0, 315.0),
+    # 'temp_scrn': (288.0, 308.0),
 }
 
-def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None):
+# Optional inset line plot in each map panel showing diurnal area-mean series.
+SHOW_DIURNAL_INSET = True
+DIURNAL_INSET_HEIGHT = '25%'
+
+# Default point for inset diurnal series if not provided via CLI args.
+DEFAULT_DIURNAL_POINT = {'lat': -33.813, 'lon': 151.003}
+
+def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None):
 
     os.makedirs(plot_dir, exist_ok=True)
     print(f"plot_dir: {plot_dir}")
@@ -61,6 +68,10 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
     else:
         hours_msg = ', '.join(f"{hour:02d}" for hour in time_hours)
         print(f"time filter (AEST hours): {hours_msg}")
+    if diurnal_point is None:
+        print("diurnal inset point: disabled")
+    else:
+        print(f"diurnal inset point (nearest grid): lat={diurnal_point['lat']:.4f}, lon={diurnal_point['lon']:.4f}")
 
     if variables_to_plot and not vars_without_wind and wants_wind:
         exp_var_files = {exp: {} for exp in exps}
@@ -78,6 +89,7 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         variables_to_plot,
         spatial_subset_bounds,
         time_hours,
+        diurnal_point,
     )
 
     return 0
@@ -108,7 +120,7 @@ def collect_metadata(exps, output_root_dir, variables_to_plot=None):
     return exp_var_files, var_meta, all_vars
 
 
-def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None):
+def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None):
     prefix = os.path.basename(os.path.normpath(output_root_dir))
     subset_suffix = '_subset' if spatial_subset_bounds is not None else ''
     requested, wants_wind = normalize_requested_vars(variables_to_plot)
@@ -123,7 +135,7 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
             return
 
     if wants_wind:
-        plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours)
+        plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours, diurnal_point)
     for var_name in all_vars:
         print(f"\nprocessing variable: {var_name}")
         exp_has_var = [exp for exp in exps if var_name in exp_var_files[exp]]
@@ -140,15 +152,24 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
 
         # Load each experiment once, then prepare means for each requested hour.
         exp_means_by_hour = {hour: {} for hour in target_hours}
+        diurnal_series_by_exp = {}
         for exp in exp_has_var:
             fname = exp_var_files[exp][var_name]
             print(f"opening {var_name} from {exp}: {fname}")
             da = open_variable(fname, var_name)
             da = select_first_level(da)
+            diurnal_series_by_exp[exp] = compute_diurnal_point_mean_aest(da, diurnal_point)
             da = apply_spatial_subset(da, spatial_subset_bounds)
             means = mean_in_time_multi(da, target_hours)
             for hour in target_hours:
                 exp_means_by_hour[hour][exp] = means[hour]
+
+        # Compute per-variable limits once across all selected hours.
+        dynamic_exp_limits, dynamic_diff_limits = compute_dynamic_limits(
+            var_name,
+            exps,
+            exp_means_by_hour,
+        )
 
         for hour in target_hours:
             exp_means = exp_means_by_hour[hour]
@@ -170,7 +191,22 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
                 meta_plot['plot_title'] = f"{meta['plot_title']} (all timesteps mean)"
 
             suffix = f"{subset_suffix}{hour_suffix}"
-            plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta_plot, prefix, suffix)
+            plot_variable_panels(
+                var_name,
+                exp_means,
+                diff_da,
+                exps,
+                plot_dir,
+                meta_plot,
+                prefix,
+                suffix,
+                current_hour=hour,
+                diurnal_series_by_exp=diurnal_series_by_exp,
+                show_diurnal_inset=SHOW_DIURNAL_INSET,
+                diurnal_point=diurnal_point,
+                exp_limits=dynamic_exp_limits,
+                diff_limits=dynamic_diff_limits,
+            )
 
         # break # for testing, remove to run all variables
 
@@ -184,11 +220,12 @@ def normalize_requested_vars(variables_to_plot):
     return requested, wants_wind
 
 
-def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours=None):
+def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours=None, diurnal_point=None):
     var_u = 'uwnd10m_b'
     var_v = 'vwnd10m_b'
     target_hours = time_hours if time_hours is not None else [None]
     exp_means_by_hour = {hour: {} for hour in target_hours}
+    diurnal_series_by_exp = {}
     units = None
     dims = None
 
@@ -208,6 +245,10 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
         da_v = open_variable(fname_v, var_v)
         da_u = select_first_level(da_u)
         da_v = select_first_level(da_v)
+
+        da_speed_all = (da_u ** 2 + da_v ** 2) ** 0.5
+        diurnal_series_by_exp[exp] = compute_diurnal_point_mean_aest(da_speed_all, diurnal_point)
+
         da_u = apply_spatial_subset(da_u, spatial_subset_bounds)
         da_v = apply_spatial_subset(da_v, spatial_subset_bounds)
 
@@ -238,6 +279,8 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
         'standard_dims': has_standard_dims(dims or []),
     }
 
+    dynamic_exp_limits, dynamic_diff_limits = compute_dynamic_limits('wind', exps, exp_means_by_hour)
+
     for hour in target_hours:
         exp_means = exp_means_by_hour[hour]
         if not exp_means:
@@ -259,7 +302,174 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
             meta_plot['plot_title'] = f"{meta['plot_title']} (all timesteps mean)"
 
         suffix = f"{subset_suffix}{hour_suffix}"
-        plot_variable_panels('wind', exp_means, diff_da, exps, plot_dir, meta_plot, prefix, suffix)
+        plot_variable_panels(
+            'wind',
+            exp_means,
+            diff_da,
+            exps,
+            plot_dir,
+            meta_plot,
+            prefix,
+            suffix,
+            current_hour=hour,
+            diurnal_series_by_exp=diurnal_series_by_exp,
+            show_diurnal_inset=SHOW_DIURNAL_INSET,
+            diurnal_point=diurnal_point,
+            exp_limits=dynamic_exp_limits,
+            diff_limits=dynamic_diff_limits,
+        )
+
+
+def compute_dynamic_limits(var_name, exps, exp_means_by_hour):
+    """Compute stable color limits across all selected hours for one variable.
+
+    Manual entries in FIXED_EXP_LIMITS/FIXED_DIFF_LIMITS override computed values.
+    """
+    exp_limits = None
+    diff_limits = None
+
+    if var_name in FIXED_EXP_LIMITS:
+        exp_limits = FIXED_EXP_LIMITS[var_name]
+    else:
+        exp_fields = []
+        for hour_means in exp_means_by_hour.values():
+            for exp in exps[:2]:
+                da = hour_means.get(exp)
+                if da is not None:
+                    exp_fields.append(da)
+        if exp_fields:
+            all_exp = xr.concat(exp_fields, dim='__stack__')
+            exp_limits = (
+                float(all_exp.quantile(0.04)),
+                float(all_exp.quantile(0.96)),
+            )
+
+    if var_name in FIXED_DIFF_LIMITS:
+        diff_limits = FIXED_DIFF_LIMITS[var_name]
+    else:
+        diff_fields = []
+        for hour_means in exp_means_by_hour.values():
+            if len(exps) < 2:
+                continue
+            if exps[0] in hour_means and exps[1] in hour_means:
+                da1, da2 = xr.align(hour_means[exps[0]], hour_means[exps[1]], join='inner')
+                diff_fields.append(da1 - da2)
+        if diff_fields:
+            all_diff = xr.concat(diff_fields, dim='__stack__')
+            p05 = float(all_diff.quantile(0.005))
+            p95 = float(all_diff.quantile(0.995))
+            vmax = max(abs(p05), abs(p95))
+            diff_limits = (-vmax, vmax)
+
+    return exp_limits, diff_limits
+
+
+def compute_diurnal_point_mean_aest(da, point):
+    """Return 24-hour AEST diurnal series for nearest grid point to lat/lon."""
+    if point is None:
+        return None
+
+    if 'time' not in da.dims:
+        return None
+
+    lat_name = 'latitude' if 'latitude' in da.coords else 'lat' if 'lat' in da.coords else None
+    lon_name = 'longitude' if 'longitude' in da.coords else 'lon' if 'lon' in da.coords else None
+    if lat_name is None or lon_name is None:
+        return None
+
+    try:
+        da_series = da.sel({lat_name: float(point['lat']), lon_name: float(point['lon'])}, method='nearest')
+    except Exception:
+        return None
+
+    if 'time' not in da_series.dims:
+        return None
+
+    hourly_utc = da_series.groupby('time.hour').mean(dim='time', skipna=True)
+    available = set(int(v) for v in hourly_utc['hour'].values.tolist())
+    values = []
+    for hour_aest in range(24):
+        hour_utc = (hour_aest - 10) % 24
+        if hour_utc in available:
+            values.append(float(hourly_utc.sel(hour=hour_utc, drop=True).values))
+        else:
+            values.append(float('nan'))
+
+    return {'hours': list(range(24)), 'values': values}
+
+
+def add_diurnal_inset(ax, exps, diurnal_series_by_exp, current_hour=None, show_legend=False):
+    """Add optional diurnal inset (bottom of map panel)."""
+    if not diurnal_series_by_exp:
+        return
+
+    iax = inset_axes(
+        ax,
+        width='100%',
+        height=DIURNAL_INSET_HEIGHT,
+        loc='lower left',
+        bbox_to_anchor=(0.06, 0.04, 0.88, 0.96),
+        bbox_transform=ax.transAxes,
+        borderpad=0,
+    )
+    iax.set_facecolor((1.0, 1.0, 1.0, 0.7))
+
+    colors = ['tab:blue', 'tab:orange']
+    for idx, exp in enumerate(exps[:2]):
+        series = diurnal_series_by_exp.get(exp)
+        if not series:
+            continue
+
+        hours = series['hours']
+        values = series['values']
+        color = colors[idx % len(colors)]
+        iax.plot(hours, values, color=color, linewidth=0.9, label=exp, zorder=2)
+
+        if current_hour is not None and 0 <= current_hour <= 23:
+            current_value = values[current_hour]
+            if current_value == current_value:
+                iax.plot(current_hour, current_value, marker='o', markersize=3.2, color=color, zorder=3)
+
+    iax.set_xlim(0, 23)
+    iax.set_xticks([0, 6, 12, 18, 23])
+    iax.tick_params(axis='x', labelsize=5, pad=1, direction='in')
+    iax.tick_params(axis='y', labelsize=5, pad=1, direction='in')
+    iax.grid(True, alpha=0.25, linewidth=0.5)
+    iax.text(0.4, 0.98, 'Diurnal at point (AEST)', transform=iax.transAxes, ha='center', va='top', fontsize=5)
+    if show_legend:
+        iax.legend(loc='upper left', fontsize=5, frameon=True, framealpha=0.7)
+
+
+def parse_diurnal_point(args):
+    """Parse point args; supports lat=<value> lon=<value>."""
+    lat_val = None
+    lon_val = None
+    for arg in args:
+        lower = arg.lower().strip()
+        if lower.startswith('lat='):
+            value = lower.split('=', 1)[-1]
+            try:
+                lat_val = float(value)
+            except Exception:
+                continue
+        elif lower.startswith('lon='):
+            value = lower.split('=', 1)[-1]
+            try:
+                lon_val = float(value)
+            except Exception:
+                continue
+
+    if lat_val is None and lon_val is None:
+        return dict(DEFAULT_DIURNAL_POINT)
+    if lat_val is None or lon_val is None:
+        print("partial diurnal point args supplied; using default point")
+        return dict(DEFAULT_DIURNAL_POINT)
+    return {'lat': lat_val, 'lon': lon_val}
+
+
+def is_diurnal_point_arg(arg):
+    lower = arg.lower().strip()
+    return lower.startswith('lat=') or lower.startswith('lon=')
 
 def plot_styling(ax, dss, proj, title):
 
@@ -518,6 +728,9 @@ def mean_in_time_multi(da, time_hours=None):
     available_hours = set(int(v) for v in hourly['hour'].values.tolist())
     out = {}
     for hour in time_hours:
+        if hour is None:
+            out[hour] = full_mean
+            continue
         utc_hour = (hour - 10) % 24
         if utc_hour in available_hours:
             out[hour] = hourly.sel(hour=utc_hour, drop=True)
@@ -622,7 +835,22 @@ def apply_spatial_subset(da, spatial_subset_bounds=None):
     return da.sel({lat_name: lat_slice, lon_name: lon_slice})
 
 
-def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, prefix, subset_suffix=''):
+def plot_variable_panels(
+    var_name,
+    exp_means,
+    diff_da,
+    exps,
+    plot_dir,
+    meta,
+    prefix,
+    subset_suffix='',
+    current_hour=None,
+    diurnal_series_by_exp=None,
+    show_diurnal_inset=False,
+    diurnal_point=None,
+    exp_limits=None,
+    diff_limits=None,
+):
     """Plot mean fields and optional difference for a variable."""
     exp1 = exps[0] if len(exps) > 0 else "exp1"
     exp2 = exps[1] if len(exps) > 1 else "exp2"
@@ -637,7 +865,9 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     # otherwise global 5th/95th percentiles across exp1 and exp2.
     shared_vmin = None
     shared_vmax = None
-    if var_name in FIXED_EXP_LIMITS:
+    if exp_limits is not None:
+        shared_vmin, shared_vmax = exp_limits
+    elif var_name in FIXED_EXP_LIMITS:
         shared_vmin, shared_vmax = FIXED_EXP_LIMITS[var_name]
     else:
         base_panels = [da for da in [da_exp1, da_exp2] if da is not None]
@@ -651,7 +881,9 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     # using 5th/95th percentiles of the diff field.
     diff_vmin = None
     diff_vmax = None
-    if da_diff is not None:
+    if diff_limits is not None:
+        diff_vmin, diff_vmax = diff_limits
+    elif da_diff is not None:
         if var_name in FIXED_DIFF_LIMITS:
             diff_vmin, diff_vmax = FIXED_DIFF_LIMITS[var_name]
         else:
@@ -675,10 +907,6 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     bom_name = meta.get('bom_name', 'variable')
     exp_panels = [(axes[0], da_exp1, exp1), (axes[1], da_exp2, exp2)]
     for ax, da_exp, exp_label in exp_panels:
-        if da_exp is None:
-            plot_styling(ax, ref_da, proj, exp_label)
-            ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha='center', va='center', fontsize=8, color='0.5')
-            continue
 
         im = da_exp.plot(
             ax=ax,
@@ -686,6 +914,7 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
             vmax=shared_vmax,
             add_colorbar=False,
             transform=proj,
+            cmap='inferno',
         )
         plot_styling(ax, da_exp, proj, exp_label)
         cbar = custom_cbar(ax, im, cbar_loc='bottom')
@@ -695,22 +924,24 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     # Panel 3: diff
     ax3 = axes[2]
     diff_title = f"{exp1} - {exp2}"
-    if da_diff is None:
-        plot_styling(ax3, ref_da, proj, diff_title)
-        ax3.text(0.5, 0.5, "no data", transform=ax3.transAxes, ha='center', va='center', fontsize=8, color='0.5')
-    else:
-        im3 = da_diff.plot(
-            ax=ax3,
-            cmap='RdBu_r',
-            vmin=diff_vmin,
-            vmax=diff_vmax,
-            add_colorbar=False,
-            transform=proj,
-        )
-        plot_styling(ax3, da_diff, proj, diff_title)
-        cbar3 = custom_cbar(ax3, im3, cbar_loc='bottom')
-        cbar3.set_label(f"{bom_name} difference [{units}]", fontsize=6)
-        cbar3.ax.tick_params(labelsize=6)
+
+    im3 = da_diff.plot(
+        ax=ax3,
+        cmap='RdBu_r',
+        vmin=diff_vmin,
+        vmax=diff_vmax,
+        add_colorbar=False,
+        transform=proj,
+    )
+    plot_styling(ax3, da_diff, proj, diff_title)
+    cbar3 = custom_cbar(ax3, im3, cbar_loc='bottom')
+    cbar3.set_label(f"{bom_name} difference [{units}]", fontsize=6)
+    cbar3.ax.tick_params(labelsize=6)
+    if show_diurnal_inset:
+        add_diurnal_inset(ax3, exps, diurnal_series_by_exp, current_hour=current_hour, show_legend=True)
+        # add x location onto spatial plot for diurnal point
+        marker_point = diurnal_point if diurnal_point is not None else DEFAULT_DIURNAL_POINT
+        ax3.plot(marker_point['lon'], marker_point['lat'], marker='x', color='black', markersize=4, transform=proj, zorder=10)
 
     desc = meta['plot_title']
     if len(desc) > 178:
@@ -724,7 +955,9 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
     else:
         fname = f"{prefix}_{var_name}_{exps[0]}{subset_suffix}.png"
 
-    out_path = os.path.join(plot_dir, fname)
+    out_path = os.path.join(plot_dir, var_name, fname)
+    # ensure output directory exists
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
@@ -732,13 +965,15 @@ def plot_variable_panels(var_name, exp_means, diff_da, exps, plot_dir, meta, pre
 if __name__ == "__main__":
 
     exps = ['CTRL','NO-URBAN']
-    output_root_dir = f'/scratch/gb02/mjl561/um2nc/SY/SY_1'
+    output_root_dir = '/g/data/gb02/mjl561/ram3_SY_urban/SY_djf/SY_1'
     if len(sys.argv) > 1:
         output_root_dir = sys.argv[1]
-    variables_to_plot = sys.argv[2:] if len(sys.argv) > 2 else []
+    variables_to_plot = sys.argv[2:] if len(sys.argv) > 2 else ['temp_scrn']
     time_hours = parse_time_hours(variables_to_plot)
+    diurnal_point = parse_diurnal_point(variables_to_plot)
     if time_hours is not None:
         variables_to_plot = [arg for arg in variables_to_plot if not is_time_hour_arg(arg)]
+    variables_to_plot = [arg for arg in variables_to_plot if not is_diurnal_point_arg(arg)]
     # if 'all' in variables_to_plot, plot all variables
     if any(arg.lower() == "all" for arg in variables_to_plot):
         variables_to_plot = []
@@ -751,6 +986,7 @@ if __name__ == "__main__":
         variables_to_plot,
         spatial_subset_bounds=SPATIAL_SUBSET_BOUNDS,
         time_hours=time_hours,
+        diurnal_point=diurnal_point,
     )
 
     # # Sam's dask setup https://github.com/21centuryweather/dask_setup
