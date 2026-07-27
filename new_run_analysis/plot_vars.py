@@ -5,7 +5,7 @@ __email__ = "m.lipson@unsw.edu.au"
 
 '''
 Environment:
-    module use /g/data/xp3/public/modules; module load conda/analysis3
+    module use /g/data/xp65/public/modules; module load conda/analysis3-25.08
 
 This script will plot all variables, comparing the two experiments:
 1. get variables to plot based on files in each exp subdirectory, check if they exist in both exp subdirs
@@ -24,6 +24,7 @@ import os
 import sys
 import importlib.util
 import re
+import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -79,7 +80,7 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         all_vars = []
     else:
         exp_var_files, var_meta, all_vars = collect_metadata(exps, output_root_dir, vars_without_wind)
-    plot_all_variables(
+    plotted_vars = plot_all_variables(
         exps,
         exp_var_files,
         var_meta,
@@ -91,6 +92,8 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         time_hours,
         diurnal_point,
     )
+
+    write_plotted_vars_manifest(plot_dir, plotted_vars)
 
     return 0
 
@@ -123,6 +126,7 @@ def collect_metadata(exps, output_root_dir, variables_to_plot=None):
 def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None):
     prefix = os.path.basename(os.path.normpath(output_root_dir))
     subset_suffix = '_subset' if spatial_subset_bounds is not None else ''
+    plotted_vars = set()
     requested, wants_wind = normalize_requested_vars(variables_to_plot)
     if requested:
         available = [name for name in requested if name in all_vars]
@@ -132,10 +136,12 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
         all_vars = available
         print(f"plotting {len(all_vars)} requested variables")
         if not all_vars and not wants_wind:
-            return
+            return plotted_vars
 
     if wants_wind:
-        plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours, diurnal_point)
+        plotted_vars.update(
+            plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours, diurnal_point)
+        )
     for var_name in all_vars:
         print(f"\nprocessing variable: {var_name}")
         exp_has_var = [exp for exp in exps if var_name in exp_var_files[exp]]
@@ -208,7 +214,11 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
                 diff_limits=dynamic_diff_limits,
             )
 
+            plotted_vars.add(var_name)
+
         # break # for testing, remove to run all variables
+
+    return plotted_vars
 
 
 def normalize_requested_vars(variables_to_plot):
@@ -225,6 +235,7 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
     var_v = 'vwnd10m_b'
     target_hours = time_hours if time_hours is not None else [None]
     exp_means_by_hour = {hour: {} for hour in target_hours}
+    exp_uv_by_hour = {hour: {} for hour in target_hours}
     diurnal_series_by_exp = {}
     units = None
     dims = None
@@ -258,6 +269,7 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
             hour_u, hour_v = xr.align(means_u[hour], means_v[hour], join='inner')
             da_speed = (hour_u ** 2 + hour_v ** 2) ** 0.5
             exp_means_by_hour[hour][exp] = da_speed
+            exp_uv_by_hour[hour][exp] = (hour_u, hour_v)
 
         if units is None:
             units = da_u.attrs.get('units', '')
@@ -266,7 +278,7 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
 
     if not any(exp_means_by_hour[hour] for hour in target_hours):
         print("no wind data available")
-        return
+        return set()
 
     meta = {
         'dims': dims or [],
@@ -280,6 +292,7 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
     }
 
     dynamic_exp_limits, dynamic_diff_limits = compute_dynamic_limits('wind', exps, exp_means_by_hour)
+    plotted_wind = False
 
     for hour in target_hours:
         exp_means = exp_means_by_hour[hour]
@@ -287,10 +300,18 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
             continue
 
         diff_da = None
+        wind_diff_components = None
         if len(exps) >= 2 and all(exp in exp_means for exp in exps[:2]):
             print(f"computing difference: {exps[0]} - {exps[1]}")
             da1, da2 = xr.align(exp_means[exps[0]], exp_means[exps[1]], join='inner')
             diff_da = da1 - da2
+
+            if all(exp in exp_uv_by_hour[hour] for exp in exps[:2]):
+                da_u1, da_v1 = exp_uv_by_hour[hour][exps[0]]
+                da_u2, da_v2 = exp_uv_by_hour[hour][exps[1]]
+                da_u1, da_u2 = xr.align(da_u1, da_u2, join='inner')
+                da_v1, da_v2 = xr.align(da_v1, da_v2, join='inner')
+                wind_diff_components = (da_u1 - da_u2, da_v1 - da_v2)
 
         print("plotting panels")
         meta_plot = dict(meta)
@@ -317,7 +338,22 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
             diurnal_point=diurnal_point,
             exp_limits=dynamic_exp_limits,
             diff_limits=dynamic_diff_limits,
+            wind_components_by_exp=exp_uv_by_hour[hour],
+            wind_diff_components=wind_diff_components,
         )
+        plotted_wind = True
+
+    return {'wind'} if plotted_wind else set()
+
+
+def write_plotted_vars_manifest(plot_dir, plotted_vars, filename='plotted_vars.txt'):
+    """Write plotted variable names for downstream movie generation."""
+    manifest_path = os.path.join(plot_dir, filename)
+    vars_sorted = sorted(set(plotted_vars))
+    with open(manifest_path, 'w', encoding='utf-8') as stream:
+        for var_name in vars_sorted:
+            stream.write(f"{var_name}\n")
+    print(f"wrote plotted vars manifest: {manifest_path} ({len(vars_sorted)} vars)")
 
 
 def compute_dynamic_limits(var_name, exps, exp_means_by_hour):
@@ -835,6 +871,52 @@ def apply_spatial_subset(da, spatial_subset_bounds=None):
     return da.sel({lat_name: lat_slice, lon_name: lon_slice})
 
 
+def add_wind_quiver(ax, da_u, da_v, proj):
+    """Overlay wind vectors on a map panel using stride-based subsampling."""
+    if da_u is None or da_v is None:
+        return
+
+    lat_name = 'latitude' if 'latitude' in da_u.coords else 'lat' if 'lat' in da_u.coords else None
+    lon_name = 'longitude' if 'longitude' in da_u.coords else 'lon' if 'lon' in da_u.coords else None
+    if lat_name is None or lon_name is None:
+        return
+
+    u_vals = np.asarray(da_u.values)
+    v_vals = np.asarray(da_v.values)
+    if u_vals.ndim != 2 or v_vals.ndim != 2:
+        return
+
+    yy_vals = np.asarray(da_u[lat_name].values)
+    xx_vals = np.asarray(da_u[lon_name].values)
+    if yy_vals.ndim == 1 and xx_vals.ndim == 1:
+        xx, yy = np.meshgrid(xx_vals, yy_vals)
+    elif yy_vals.ndim == 2 and xx_vals.ndim == 2:
+        xx, yy = xx_vals, yy_vals
+    else:
+        return
+
+    quiver_stride_y = max(1, u_vals.shape[0] // 35)
+    quiver_stride_x = max(1, u_vals.shape[1] // 35)
+
+    ax.quiver(
+        xx[::quiver_stride_y, ::quiver_stride_x],
+        yy[::quiver_stride_y, ::quiver_stride_x],
+        u_vals[::quiver_stride_y, ::quiver_stride_x],
+        v_vals[::quiver_stride_y, ::quiver_stride_x],
+        edgecolor="black",
+        angles="xy",
+        scale_units="xy",
+        scale=None,
+        width=0.001,
+        linewidth=0.1,
+        headwidth=10,
+        headlength=7,
+        headaxislength=3,
+        transform=proj,
+        zorder=7,
+    )
+
+
 def plot_variable_panels(
     var_name,
     exp_means,
@@ -850,6 +932,8 @@ def plot_variable_panels(
     diurnal_point=None,
     exp_limits=None,
     diff_limits=None,
+    wind_components_by_exp=None,
+    wind_diff_components=None,
 ):
     """Plot mean fields and optional difference for a variable."""
     exp1 = exps[0] if len(exps) > 0 else "exp1"
@@ -920,6 +1004,9 @@ def plot_variable_panels(
         cbar = custom_cbar(ax, im, cbar_loc='bottom')
         cbar.set_label(f"{bom_name} [{units}]", fontsize=6)
         cbar.ax.tick_params(labelsize=6)
+        if wind_components_by_exp and exp_label in wind_components_by_exp:
+            da_u, da_v = wind_components_by_exp[exp_label]
+            add_wind_quiver(ax, da_u, da_v, proj)
 
     # Panel 3: diff
     ax3 = axes[2]
@@ -937,6 +1024,9 @@ def plot_variable_panels(
     cbar3 = custom_cbar(ax3, im3, cbar_loc='bottom')
     cbar3.set_label(f"{bom_name} difference [{units}]", fontsize=6)
     cbar3.ax.tick_params(labelsize=6)
+    if wind_diff_components is not None:
+        da_u_diff, da_v_diff = wind_diff_components
+        add_wind_quiver(ax3, da_u_diff, da_v_diff, proj)
     if show_diurnal_inset:
         add_diurnal_inset(ax3, exps, diurnal_series_by_exp, current_hour=current_hour, show_legend=True)
         # add x location onto spatial plot for diurnal point
