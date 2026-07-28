@@ -15,9 +15,9 @@ module use /g/data/xp65/public/modules
 module load conda/analysis3-25.08
 
 # location of post-processed netcdf data
-output_root_dir="/g/data/gb02/mjl561/ram3_SY_urban/SY_djf/SY_1"
-# output_root_dir="/scratch/gb02/mjl561/um2nc/SY_djf/SY_1"
-variables_to_plot=(wind wndgust10m_scale wndgust10m)
+# output_root_dir="/g/data/gb02/mjl561/ram3_SY_urban/SY_djf/SY_1"
+output_root_dir="/scratch/gb02/mjl561/um2nc/SY_djf/SY_1"
+variables_to_plot=(wind)
 # use "wind" to plot 10 m wind speed from uwnd10m_b/vwnd10m_b
 # variables_to_plot="temp_scrn"
 # movie settings (used for hour-by-hour frames)
@@ -31,21 +31,33 @@ movie_output_subdir="movies"
 lat="-33.813"
 lon="151.003"
 
+# Optional file with subset of dates (YYYY-MM-DD per line) to use for mean calculations.
+# Leave empty to use all available days.
+# Example:
+days_subset_file="/scratch/gb02/mjl561/um2nc/SY_djf/SY_1/CTRL/key_days_mslp_top25pct.txt"
+# days_subset_file=""
+
 # Optional: provide AEST hours to plot hourly means, e.g. hours=(0 6 12 18).
 # Leave empty to plot a single all-timesteps mean.
 hours=()
 hours=($(seq 0 23))
 
 # spatial
+extra_plot_args=()
+if [[ -n "${days_subset_file}" ]]; then
+  echo "Applying day subset from: ${days_subset_file}"
+  extra_plot_args+=("days_file=${days_subset_file}")
+fi
+
 if (( ${#hours[@]} > 0 )); then
   hours_csv=$(IFS=,; echo "${hours[*]}")
   echo "Processing AEST hours: ${hours_csv}"
   python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_vars.py \
-    "$output_root_dir" "hours=${hours_csv}" "lat=${lat}" "lon=${lon}" "${variables_to_plot[@]}"
+    "$output_root_dir" "hours=${hours_csv}" "lat=${lat}" "lon=${lon}" "${extra_plot_args[@]}" "${variables_to_plot[@]}"
 else
   echo "No hours passed: plotting all-timesteps mean"
   python /home/561/mjl561/git/RNS_Sydney_1km/new_run_analysis/plot_vars.py \
-    "$output_root_dir" "lat=${lat}" "lon=${lon}" "${variables_to_plot[@]}"
+    "$output_root_dir" "lat=${lat}" "lon=${lon}" "${extra_plot_args[@]}" "${variables_to_plot[@]}"
 fi
 
 # make movie from hourly frames (only when hour plots were generated)

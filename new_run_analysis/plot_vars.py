@@ -25,6 +25,7 @@ import sys
 import importlib.util
 import re
 import numpy as np
+import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -55,7 +56,7 @@ DIURNAL_INSET_HEIGHT = '25%'
 # Default point for inset diurnal series if not provided via CLI args.
 DEFAULT_DIURNAL_POINT = {'lat': -33.813, 'lon': 151.003}
 
-def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None):
+def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None, subset_days=None):
 
     os.makedirs(plot_dir, exist_ok=True)
     print(f"plot_dir: {plot_dir}")
@@ -73,6 +74,10 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         print("diurnal inset point: disabled")
     else:
         print(f"diurnal inset point (nearest grid): lat={diurnal_point['lat']:.4f}, lon={diurnal_point['lon']:.4f}")
+    if subset_days is None:
+        print("day subset: none (use all days)")
+    else:
+        print(f"day subset: {len(subset_days)} days")
 
     if variables_to_plot and not vars_without_wind and wants_wind:
         exp_var_files = {exp: {} for exp in exps}
@@ -91,6 +96,7 @@ def main(exps, output_root_dir, plot_dir, variables_to_plot=None, spatial_subset
         spatial_subset_bounds,
         time_hours,
         diurnal_point,
+        subset_days,
     )
 
     write_plotted_vars_manifest(plot_dir, plotted_vars)
@@ -123,9 +129,11 @@ def collect_metadata(exps, output_root_dir, variables_to_plot=None):
     return exp_var_files, var_meta, all_vars
 
 
-def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None):
+def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output_root_dir, variables_to_plot=None, spatial_subset_bounds=None, time_hours=None, diurnal_point=None, subset_days=None):
     prefix = os.path.basename(os.path.normpath(output_root_dir))
     subset_suffix = '_subset' if spatial_subset_bounds is not None else ''
+    if subset_days is not None:
+        subset_suffix = f"{subset_suffix}_select_days"
     plotted_vars = set()
     requested, wants_wind = normalize_requested_vars(variables_to_plot)
     if requested:
@@ -140,7 +148,7 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
 
     if wants_wind:
         plotted_vars.update(
-            plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours, diurnal_point)
+            plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours, diurnal_point, subset_days)
         )
     for var_name in all_vars:
         print(f"\nprocessing variable: {var_name}")
@@ -164,6 +172,10 @@ def plot_all_variables(exps, exp_var_files, var_meta, all_vars, plot_dir, output
             print(f"opening {var_name} from {exp}: {fname}")
             da = open_variable(fname, var_name)
             da = select_first_level(da)
+            da = apply_day_subset(da, subset_days)
+            if subset_days is not None and 'time' in da.dims and da.sizes.get('time', 0) == 0:
+                print(f"skipping {var_name} for {exp}: no timesteps match provided day subset")
+                continue
             diurnal_series_by_exp[exp] = compute_diurnal_point_mean_aest(da, diurnal_point)
             da = apply_spatial_subset(da, spatial_subset_bounds)
             means = mean_in_time_multi(da, target_hours)
@@ -230,7 +242,7 @@ def normalize_requested_vars(variables_to_plot):
     return requested, wants_wind
 
 
-def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours=None, diurnal_point=None):
+def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subset_suffix, spatial_subset_bounds, time_hours=None, diurnal_point=None, subset_days=None):
     var_u = 'uwnd10m_b'
     var_v = 'vwnd10m_b'
     target_hours = time_hours if time_hours is not None else [None]
@@ -256,6 +268,11 @@ def plot_wind_speed(exps, exp_var_files, output_root_dir, plot_dir, prefix, subs
         da_v = open_variable(fname_v, var_v)
         da_u = select_first_level(da_u)
         da_v = select_first_level(da_v)
+        da_u = apply_day_subset(da_u, subset_days)
+        da_v = apply_day_subset(da_v, subset_days)
+        if subset_days is not None and 'time' in da_u.dims and da_u.sizes.get('time', 0) == 0:
+            print(f"skipping wind for {exp}: no timesteps match provided day subset")
+            continue
 
         da_speed_all = (da_u ** 2 + da_v ** 2) ** 0.5
         diurnal_series_by_exp[exp] = compute_diurnal_point_mean_aest(da_speed_all, diurnal_point)
@@ -841,6 +858,62 @@ def is_time_hour_arg(arg):
     return False
 
 
+def parse_subset_days_path(args):
+    """Parse optional days-file arg (days_file=<path>)."""
+    for arg in args:
+        lower = arg.lower().strip()
+        if lower.startswith('days_file='):
+            return arg.split('=', 1)[-1].strip()
+    return None
+
+
+def is_subset_days_arg(arg):
+    return arg.lower().strip().startswith('days_file=')
+
+
+def load_subset_days(days_file):
+    """Load YYYY-MM-DD lines and return sorted unique np.datetime64[D] values."""
+    if not days_file:
+        return None
+
+    if not os.path.exists(days_file):
+        print(f"day subset file not found: {days_file}; using all days")
+        return None
+
+    parsed_days = []
+    with open(days_file, 'r', encoding='utf-8') as stream:
+        for raw in stream:
+            day_txt = raw.strip()
+            if not day_txt or day_txt.startswith('#'):
+                continue
+            try:
+                day_val = pd.to_datetime(day_txt, format='%Y-%m-%d', errors='raise')
+            except Exception:
+                print(f"skipping invalid day entry in subset file: {day_txt}")
+                continue
+            parsed_days.append(np.datetime64(day_val.normalize(), 'D'))
+
+    if not parsed_days:
+        print(f"no valid days parsed from subset file: {days_file}; using all days")
+        return None
+
+    unique_days = sorted(set(parsed_days))
+    print(f"loaded {len(unique_days)} subset days from: {days_file}")
+    return unique_days
+
+
+def apply_day_subset(da, subset_days=None):
+    """Subset a DataArray to timestamps whose UTC date is listed in subset_days."""
+    if subset_days is None:
+        return da
+    if 'time' not in da.dims:
+        return da
+
+    subset_index = pd.to_datetime(subset_days).normalize()
+    day_mask = da['time'].dt.floor('D').isin(subset_index)
+    return da.where(day_mask, drop=True)
+
+
 def apply_spatial_subset(da, spatial_subset_bounds=None):
     """Apply optional lat/lon subset bounds to a DataArray."""
     if spatial_subset_bounds is None:
@@ -1061,9 +1134,12 @@ if __name__ == "__main__":
     variables_to_plot = sys.argv[2:] if len(sys.argv) > 2 else ['temp_scrn']
     time_hours = parse_time_hours(variables_to_plot)
     diurnal_point = parse_diurnal_point(variables_to_plot)
+    subset_days_path = parse_subset_days_path(variables_to_plot)
+    subset_days = load_subset_days(subset_days_path)
     if time_hours is not None:
         variables_to_plot = [arg for arg in variables_to_plot if not is_time_hour_arg(arg)]
     variables_to_plot = [arg for arg in variables_to_plot if not is_diurnal_point_arg(arg)]
+    variables_to_plot = [arg for arg in variables_to_plot if not is_subset_days_arg(arg)]
     # if 'all' in variables_to_plot, plot all variables
     if any(arg.lower() == "all" for arg in variables_to_plot):
         variables_to_plot = []
@@ -1077,6 +1153,7 @@ if __name__ == "__main__":
         spatial_subset_bounds=SPATIAL_SUBSET_BOUNDS,
         time_hours=time_hours,
         diurnal_point=diurnal_point,
+        subset_days=subset_days,
     )
 
     # # Sam's dask setup https://github.com/21centuryweather/dask_setup
